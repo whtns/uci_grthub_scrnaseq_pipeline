@@ -1,0 +1,29 @@
+# Multi-sample configuration file for CellRanger Snakemake workflow
+
+# List of samples to process
+samples:
+  - A172
+  - U251
+  - VMB
+
+# Input/Output paths
+paths:
+  fastqs: "/dfs9/ucightf-lab/kstachel/scRNAseq_Pipeline/data/FASTQ"
+  output: "cellranger_output"  # Output directory for all samples
+
+# Reference genome/transcriptome
+references:
+  # Human reference (default)
+  transcriptome: "/dfs8/commondata/cellranger/refdata-cellranger-GRCh38-3.0.0"
+  # Mouse reference (alternative)
+  # transcriptome: "/dfs8/commondata/cellranger/refdata-cellranger-mm10-1.2.0"
+
+# CellRanger parameters
+params:
+  localcores: 8
+  localmem: 128  # GB
+
+# Available references (for documentation)
+# Main directory: /dfs8/commondata/cellranger/
+# Human: refdata-cellranger-GRCh38-3.0.0 
+# Mouse: refdata-cellranger-mm10-1.2.0
