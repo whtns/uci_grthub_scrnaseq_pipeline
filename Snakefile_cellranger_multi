@@ -40,8 +40,8 @@ rule all:
         # # Seurat outputs
         # expand(f"{OUTPUT_DIR}/seurat/{{sample}}_seu.rds", sample=SAMPLES),
         # expand(f"{OUTPUT_DIR}/seurat/{{sample}}_embeddings.csv", sample=SAMPLES),
-        # Velocyto outputs
-        expand(f"{OUTPUT_DIR}/velocyto/{{sample}}.loom", sample=SAMPLES)
+        # # Velocyto outputs
+        # expand(f"{OUTPUT_DIR}/velocyto/{{sample}}.loom", sample=SAMPLES)
         # # scVelo outputs
         # expand(f"{OUTPUT_DIR}/scanpy/{{sample}}_scvelo.h5ad", sample=SAMPLES),
         # # Pileup and phasing outputs
