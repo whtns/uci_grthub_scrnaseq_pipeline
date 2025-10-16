@@ -214,34 +214,12 @@ rule cellranger_count:
 # Rule: Generate multi-sample summary
 rule multi_sample_summary:
     input:
-        web_summaries = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/web_summary.html", sample=SAMPLES)
+        web_summaries = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/web_summary.html", sample=SAMPLES),
+        metrics_summaries = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/metrics_summary.csv", sample=SAMPLES)
     output:
         summary = f"{OUTPUT_DIR}/multi_sample_summary.txt"
     run:
         import re, os
-
-        def extract_metrics_from_web_summary(path):
-            """Return (mean_reads_per_cell, estimated_cells) or ('N/A','N/A') if not found."""
-            mean_reads = 'N/A'
-            est_cells = 'N/A'
-            try:
-                with open(path, 'r') as fh:
-                    html = fh.read()
-                # Strip HTML tags to make text search simpler
-                text = re.sub(r'<[^>]+>', ' ', html)
-                text = re.sub(r'\s+', ' ', text)
-                # Look for Mean reads per cell (case-insensitive)
-                m = re.search(r'(?i)mean\s*reads\s*per\s*cell[^0-9\n]*([0-9,]+)', text)
-                if m:
-                    mean_reads = m.group(1)
-                # Look for Estimated number of cells
-                m2 = re.search(r'(?i)estimated\s*number\s*of\s*cells[^0-9\n]*([0-9,]+)', text)
-                if m2:
-                    est_cells = m2.group(1)
-            except Exception:
-                # If anything goes wrong, return N/A values
-                pass
-            return mean_reads, est_cells
 
         with open(output.summary, 'w') as f:
             f.write("CellRanger Multi-Sample Analysis Summary\n")
@@ -250,10 +228,26 @@ rule multi_sample_summary:
             f.write(f"Total samples processed: {len(SAMPLES)}\n\n")
 
             for sample in SAMPLES:
+                metrics_path = f"{OUTPUT_DIR}/cellranger/{sample}/outs/metrics_summary.csv"
                 web_path = f"{OUTPUT_DIR}/cellranger/{sample}/outs/web_summary.html"
                 mean_reads, est_cells = ('N/A', 'N/A')
-                if os.path.exists(web_path):
-                    mean_reads, est_cells = extract_metrics_from_web_summary(web_path)
+                if os.path.exists(metrics_path):
+                    # Read the CSV header and first row to extract the columns we need
+                    try:
+                        with open(metrics_path, 'r') as mh:
+                            header = mh.readline().strip().split(',')
+                            row = mh.readline().strip()
+                            # Handle quoted CSV values and commas inside quotes
+                            import csv
+                            mh.seek(0)
+                            reader = csv.DictReader(mh)
+                            first = next(reader, None)
+                            if first:
+                                # Keys in the CSV match 'Estimated Number of Cells' and 'Mean Reads per Cell'
+                                est_cells = first.get('Estimated Number of Cells', 'N/A')
+                                mean_reads = first.get('Mean Reads per Cell', 'N/A')
+                    except Exception:
+                        mean_reads, est_cells = ('N/A', 'N/A')
 
                 f.write(f"Sample: {sample}\n")
                 f.write(f"  - Web summary: {web_path}\n")
