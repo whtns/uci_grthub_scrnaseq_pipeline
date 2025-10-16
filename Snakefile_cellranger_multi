@@ -18,30 +18,52 @@ import re
 # Load configuration
 configfile: "config_cellranger_multi.yaml"
 
-# Auto-detect samples from data/FASTQ directory
+# Auto-detect samples from FASTQ directory
 def get_samples_from_fastq_dir():
-    fastq_path = "data/FASTQ"
-    if os.path.exists(fastq_path):
-        # Get all R1 FASTQ files
-        r1_files = glob.glob(os.path.join(fastq_path, "*_R1_*.fastq.gz"))
-        samples = []
-        for file in r1_files:
-            # Extract sample name from filename (everything before _S[0-9]+_)
-            basename = os.path.basename(file)
-            match = re.match(r'^(.+?)_S\d+_', basename)
-            if match:
-                sample_name = match.group(1)
-                if sample_name != "Undetermined":  # Skip undetermined reads
-                    samples.append(sample_name)
-        return sorted(list(set(samples)))
-    else:
+    """
+    Detect sample names by inspecting the FASTQ directory structure.
+
+    Supported layouts:
+    - per-sample subfolders: <FASTQ_DIR>/<sample>/<sample>_S*_L*_R1_*.fastq.gz
+    - flat files in FASTQ_DIR: <FASTQ_DIR>/<sample>_S*_L*_R1_*.fastq.gz
+
+    Returns a sorted list of unique sample names, excluding 'Undetermined'.
+    """
+    # Prefer configured path; fall back to default
+    fastq_path = config.get("paths", {}).get("fastqs", "data/FASTQ")
+    if not os.path.exists(fastq_path):
         return []
+
+    samples = set()
+
+    # 1) Look inside one-level subdirectories (typical 10x demux output)
+    subdirs = [d for d in glob.glob(os.path.join(fastq_path, "*")) if os.path.isdir(d)]
+    for d in subdirs:
+        sample_dir_name = os.path.basename(d)
+        if sample_dir_name == "Undetermined":
+            continue
+        # R1 files inside the subdir; be lenient on prefix
+        r1_in_dir = glob.glob(os.path.join(d, "*_R1_*.fastq.gz"))
+        if r1_in_dir:
+            samples.add(sample_dir_name)
+
+    # 2) Also consider flat layout at root (no subdirs)
+    r1_files_root = glob.glob(os.path.join(fastq_path, "*_R1_*.fastq.gz"))
+    for file in r1_files_root:
+        basename = os.path.basename(file)
+        m = re.match(r'^(.+?)_S\d+_', basename)
+        if m:
+            name = m.group(1)
+            if name != "Undetermined":
+                samples.add(name)
+
+    return sorted(samples)
 
 # Extract sample list and configuration
 # Use auto-detected samples if available, otherwise fall back to config
 auto_samples = get_samples_from_fastq_dir()
 SAMPLES = auto_samples if auto_samples else config.get("samples", [])
-FASTQ_DIR = "data/FASTQ"  # Updated to use local data directory
+FASTQ_DIR = config.get("paths", {}).get("fastqs", "data/FASTQ")
 TRANSCRIPTOME = config["references"]["transcriptome"]
 OUTPUT_DIR = config["paths"]["output"]
 
@@ -91,8 +113,10 @@ rule all:
 def get_fastq_files(wildcards, read):
     """Get R1 or R2 FASTQ file for a sample"""
     import glob
-    pattern = f"{FASTQ_DIR}/{wildcards.sample}_S*_L*_{read}_*.fastq.gz"
-    files = glob.glob(pattern)
+    # Support both flat and per-sample subfolder layouts
+    pattern_flat = f"{FASTQ_DIR}/{wildcards.sample}_S*_L*_{read}_*.fastq.gz"
+    pattern_dir = f"{FASTQ_DIR}/{wildcards.sample}/*_{read}_*.fastq.gz"
+    files = glob.glob(pattern_flat) + glob.glob(pattern_dir)
     if not files:
         raise ValueError(f"No {read} FASTQ files found for sample {wildcards.sample}")
     return files[0]  # Return first match
