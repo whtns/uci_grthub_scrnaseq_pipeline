@@ -12,7 +12,8 @@ work/
 slurm*
 *python/cache/*
 *.h5ad
-nextflow/
+nextflow
 *.out
 *.err
 __pycache__/
+results/

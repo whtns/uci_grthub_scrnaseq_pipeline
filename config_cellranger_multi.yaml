@@ -52,6 +52,13 @@ references:
 params:
   localcores: 8
   localmem: 128  # GB
+  chemistry: "SC3Pv4"
+
+# scVI integration parameters  
+min_genes: 300
+min_cells: 5
+n_top_genes: 2000
+batch_key: "batch"
 
 ## Scenic
 TFs: "/dfs9/ucightf-lab/kstachel/kstachel_references/scenic/hs_hgnc_curated_tfs.txt"
