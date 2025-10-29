@@ -16,7 +16,7 @@ import os
 import re
 
 # Load configuration
-configfile: "config_cellranger_multi.yaml"
+configfile: "config.yaml"
 
 # Auto-detect samples from FASTQ directory
 def get_samples_from_fastq_dir():
@@ -87,7 +87,7 @@ rule all:
         # directory(f"{OUTPUT_DIR}/web_summaries"),
         # MultiQC report
         # f"{OUTPUT_DIR}/multiqc_report.html",
-        # integration_results = f"{OUTPUT_DIR}/scanpy/combined_integrated.h5ad"
+        integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -363,6 +363,33 @@ rule tenx_scvi_integration:
             --min_cells {params.min_cells} \
             --n_top_genes {params.n_top_genes} \
             --batch_key {params.batch_key}
+        """
+
+# Rule: 10x scVI integration
+rule tenx_harmony_integration:
+    input:
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+    output:
+        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
+        integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+    conda: "scvi-tools"
+    params:
+        script = "src/submit_harmony_integration.sh",
+        input_dir = f"{OUTPUT_DIR}/cellranger",
+        min_genes = config.get("min_genes", 300),
+        min_cells = config.get("min_cells", 5),
+        n_top_genes = config.get("n_top_genes", 2000),
+        batch_key = config.get("batch_key", "batch"),
+        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
+    threads: 4
+    resources:
+        mem_mb = 32000,  # 32GB in MB
+        cpus = 8,
+        account = "sbsandme_lab"
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/scanpy
+        {params.script} {params.output_prefix} --min-genes {params.min_genes}
         """
 
 # Rule: loompy
