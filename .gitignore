@@ -12,5 +12,10 @@ work/
 slurm*
 *python/cache/*
 *.h5ad
+nextflow
 *.out
+*.err
+__pycache__/
+results/
+src/technology_xenium.ipynb
 results/
