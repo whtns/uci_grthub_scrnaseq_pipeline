@@ -7,39 +7,16 @@
 # NOTE: Samples are now auto-detected from data/FASTQ directory
 # The following list is used as fallback if auto-detection fails
 samples:
-  - 01001CM_011923
-  - 01001CM_041123
-  - 01001CM_122022
-  - 01002FS_032123
-  - 01002FS_041823
-  - 01002FS_071123
-  - 01003DC_051623
-  - 01003DC_061323
-  - 01003DC_090523
-  - 01008LF_020624
-  - 01008LF_030524
-  - 01008LF_060424
-  - 01009PB_040924
-  - 01009PB_050724
-  - 01009PB_080124
-  - 01011AS_052124
-  - 01011AS_061824
-  - 01011AS_091024
-  - 01011TC_062524
-  - 01011TC_072324
-  - 01011TC_101524
-  - 01012LY_070924
-  - 01012LY_080624
-  - 01012LY_102924
-  - 01013MM_071624
-  - 01013MM_081324
-  - 01013MM_110124
+  - Medino_rooster_3NP5_1
+  - Medino_rooster_3NP5_2
+  - TC_med_4_7P5_1
+  - TC_med_4_7P5_2
 
 # Input/Output paths
 paths:
   fastqs: "data/FASTQ"  # Updated to use local data directory
   output: "output"  # Output directory for all samples
-
+  
 # Reference genome/transcriptome
 references:
   # Human reference (default)
