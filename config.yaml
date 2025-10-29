@@ -32,8 +32,9 @@ params:
   chemistry: "SC3Pv4"
 
 # scVI integration parameters  
-min_genes: 300
+min_genes: 200
 min_cells: 5
+mt_thresh: 5
 n_top_genes: 2000
 batch_key: "batch"
 
