@@ -17,3 +17,4 @@ nextflow
 *.err
 __pycache__/
 results/
+src/technology_xenium.ipynb
