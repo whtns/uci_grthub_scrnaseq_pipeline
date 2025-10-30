@@ -37,6 +37,7 @@ parser.add_argument('--min_genes', type=int, default=300, help='Minimum genes pe
 parser.add_argument('--min_cells', type=int, default=5, help='Minimum cells per gene for filtering')
 parser.add_argument('--n_top_genes', type=int, default=2000, help='Number of highly variable genes to select')
 parser.add_argument('--batch_key', type=str, default='batch', help='Batch key for integration')
+parser.add_argument('--metadata', type=str, default='metadata.csv', help='csv file with metadata for samples')
 args = parser.parse_args()
 
 # directory_path = Path(args.input_dir)
@@ -90,6 +91,11 @@ else:
         adatas.append(adata)
     
     combined_adata = ad.concat(adatas, join='outer', uns_merge="first")
+
+    metadata_df = pd.read_csv(args.metadata, index_col=0)
+
+    adata.obs = pd.merge(adata.obs, metadata_df, on="batch", how="left", validate="many_to_one")
+
     combined_adata.write(combined_adata_path)
     del adatas
 

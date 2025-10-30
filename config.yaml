@@ -12,6 +12,8 @@ samples:
   - TC_med_4_7P5_1
   - TC_med_4_7P5_2
 
+metadata = "data/metadata.csv"
+
 # Input/Output paths
 paths:
   fastqs: "data/FASTQ"  # Updated to use local data directory
