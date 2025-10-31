@@ -367,7 +367,8 @@ rule tenx_scvi_integration:
 # Rule: 10x harmony integration
 rule tenx_harmony_integration:
     input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
+       metadata = config.get("metadata", None)
     output:
         combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
@@ -395,6 +396,7 @@ rule tenx_harmony_integration:
             --min_cells {params.min_cells} \
             --n_top_genes {params.n_top_genes} \
             --batch_key {params.batch_key}
+            --metadata {input.metadata if input.metadata else ''}
         """
 
 # Rule: 10x harmony notebook
@@ -421,7 +423,7 @@ rule tenx_harmony_notebook:
         """
         mkdir -p {OUTPUT_DIR}/scanpy
         echo {input.integration_results}
-        {params.script} {params.output_prefix} --no-integration --min-genes {params.min_genes}
+        {params.script} --no-integration --min-genes {params.min_genes} {params.output_prefix}
         """
 
 # Rule: loompy
