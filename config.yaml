@@ -12,13 +12,14 @@ samples:
   - TC_med_4_7P5_1
   - TC_med_4_7P5_2
 
-metadata = "data/metadata.csv"
+metadata: "data/metadata.csv"
 
 # Input/Output paths
-paths:
-  fastqs: "data/FASTQ"  # Updated to use local data directory
-  output: "output"  # Output directory for all samples
-  
+paths: 
+  fastqs: "data/FASTQ"
+  output: "output"
+
+
 # Reference genome/transcriptome
 references:
   # Human reference (default)
