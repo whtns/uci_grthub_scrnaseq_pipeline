@@ -213,7 +213,7 @@ rule multi_sample_summary:
     output:
         summary = f"{OUTPUT_DIR}/multi_sample_summary.csv"
     params:
-        script = "scripts/filter_cellranger_out.py",
+        script = "src/filter_cellranger_out.py",
         mt_thresh = config.get('mt_thresh', 5),
         min_genes = config.get('min_genes', 200),
         min_cells = config.get('min_cells', 5),
@@ -333,7 +333,7 @@ rule tenx_scvi_integration:
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_integrated.h5ad"
     conda: "scvi-tools"
     params:
-        script = "scripts/tenx_scvi_integration.py",
+        script = "src/tenx_scvi_integration.py",
         input_dir = f"{OUTPUT_DIR}/cellranger",
         min_genes = config.get("min_genes", 300),
         min_cells = config.get("min_cells", 5),
@@ -367,7 +367,7 @@ rule tenx_harmony_integration:
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
     conda: "scvi-tools"
     params:
-        script = "scripts/tenx_harmony_integration.py",
+        script = "src/tenx_harmony_integration.py",
         input_dir = f"{OUTPUT_DIR}/cellranger",
         min_genes = config.get("min_genes", 300),
         min_cells = config.get("min_cells", 5),
@@ -428,7 +428,7 @@ rule plot_filtering_timeline:
     output:
         png = f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png"
     params:
-        script = "scripts/plot_filtering_timeline.py",
+        script = "src/plot_filtering_timeline.py",
         batch_key = config.get("batch_key", "batch"),
         min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 3)
@@ -468,7 +468,7 @@ rule loompy:
 rule seurat:
     input:
         matrix_dir = f"{OUTPUT_DIR}/{{sample}}/outs/filtered_feature_bc_matrix/",
-        script = "scripts/process_seurat.R"
+        script = "src/process_seurat.R"
     output:
         seu_path = f"{OUTPUT_DIR}/seurat/{{sample}}_seu.rds"
     log:
@@ -482,7 +482,7 @@ rule seurat_embeddings:
     input:
         seu_path = f"{OUTPUT_DIR}/seurat/{{sample}}_seu.rds",
         nb_path = f"{OUTPUT_DIR}/numbat/{{sample}}_numbat.rds",
-        script = "scripts/save_seurat_embeddings.R"
+        script = "src/save_seurat_embeddings.R"
     output:
         seurat_embeddings = f"{OUTPUT_DIR}/seurat/{{sample}}_embeddings.csv"
     log:
@@ -515,14 +515,14 @@ rule scvelo:
         scvelo_h5ad = f"{OUTPUT_DIR}/scanpy/{{sample}}_scvelo.h5ad"
     threads: 2
     shell:
-        '''python scripts/compute_velocity.py {input.anndata_file} {input.loom_file} {input.seurat_embeddings}'''
+        '''python src/compute_velocity.py {input.anndata_file} {input.loom_file} {input.seurat_embeddings}'''
 
 # Rule: pileup and phasing
 rule pileup_and_phasing:
     input:
         bam = f"{OUTPUT_DIR}/{{sample}}/outs/possorted_genome_bam.bam",
         barcodes = f"{OUTPUT_DIR}/{{sample}}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-        script = "scripts/pileup_and_phase.R"
+        script = "src/pileup_and_phase.R"
     output:
         allele_df = f"{OUTPUT_DIR}/numbat/{{sample}}_allele_counts.tsv.gz"
     threads: 4
@@ -535,7 +535,7 @@ rule numbat:
         allele_df = f"{OUTPUT_DIR}/numbat/{{sample}}_allele_counts.tsv.gz",
         matrix_file = f"{OUTPUT_DIR}/{{sample}}/outs/filtered_feature_bc_matrix/matrix.mtx.gz",
         seu_path = f"{OUTPUT_DIR}/seurat/{{sample}}_seu.rds",
-        script = "scripts/run_numbat.R"
+        script = "src/run_numbat.R"
     output:
         done_file = f"{OUTPUT_DIR}/numbat/{{sample}}/done.txt"
     threads: 4
@@ -583,7 +583,7 @@ rule scrublet:
         cpus = 2,
         partition = "standard"
     params:
-        script = "scripts/run_scrublet.py"
+        script = "src/run_scrublet.py"
     shell:
         """
         mkdir -p {OUTPUT_DIR}/scrublet
