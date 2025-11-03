@@ -19,3 +19,4 @@ __pycache__/
 results/
 src/technology_xenium.ipynb
 results/
+*.png
