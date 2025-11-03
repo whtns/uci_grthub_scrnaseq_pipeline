@@ -134,6 +134,21 @@ args = parser.parse_args()
 
 output_prefix = args.output_prefix
 
+# Look for directories containing outs/filtered_feature_bc_matrix/ with 10x files
+data_paths = []
+
+for filtered_matrix_dir in args.filtered_matrix_dirs:
+    matrix_file = os.path.join(filtered_matrix_dir, 'matrix.mtx.gz')
+    features_file = os.path.join(filtered_matrix_dir, 'features.tsv.gz')
+    barcodes_file = os.path.join(filtered_matrix_dir, 'barcodes.tsv.gz')
+    
+    if (os.path.exists(matrix_file) and 
+        os.path.exists(features_file) and 
+        os.path.exists(barcodes_file)):
+        data_paths.append(filtered_matrix_dir)
+
+print(data_paths)
+
 # ## Reading in data
 # 
 # After reading in the data we'll perform basic filtering on our expression matrix to remove low-quality cells and uninformative genes. The parameter "min_genes" will keep cells that have at least 300 genes, and similarly, "min_cells" will keep genes that are expressed in at least 5 cells.
@@ -143,21 +158,6 @@ if os.path.exists(combined_adata_path):
     print(f"{combined_adata_path} already exists. Skipping data loading and concatenation.")
     combined_adata = ad.read_h5ad(combined_adata_path)
 else:
-    # Look for directories containing outs/filtered_feature_bc_matrix/ with 10x files
-    data_paths = []
-    for filtered_matrix_dir in args.filtered_matrix_dirs:
-        matrix_file = os.path.join(filtered_matrix_dir, 'matrix.mtx.gz')
-        features_file = os.path.join(filtered_matrix_dir, 'features.tsv.gz')
-        barcodes_file = os.path.join(filtered_matrix_dir, 'barcodes.tsv.gz')
-        
-        if (os.path.exists(matrix_file) and 
-            os.path.exists(features_file) and 
-            os.path.exists(barcodes_file)):
-            data_paths.append(filtered_matrix_dir)
-
-    print(data_paths)
-    if len(data_paths) == 0:
-        raise ValueError("No valid 10x filtered_feature_bc_matrix directories found.")
     adatas = []
     for i, data_path in enumerate(data_paths):
         # Extract sample ID from the path (e.g., from /path/to/01001CM_011923/outs/filtered_feature_bc_matrix)
@@ -181,4 +181,4 @@ else:
 
 print(output_prefix)
 
-gt.integrate_w_scvi(combined_adata, output_prefix)
+gt.process_with_scvi(combined_adata, output_prefix)
