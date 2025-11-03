@@ -89,6 +89,9 @@ rule all:
         # f"{OUTPUT_DIR}/multiqc_report.html",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
         integration_notebook = f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb"
+    ,
+    # per-sample filtering timeline plots
+    expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -348,8 +351,8 @@ rule tenx_scvi_integration:
         output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
     threads: 4
     resources:
-        mem_mb = 32000,  # 32GB in MB
-        cpus = 4,
+        mem_mb = 48000,  # 32GB in MB
+        cpus = 8,
         partition = "gpu",
         account = "sbsandme_lab_gpu"
     shell:
@@ -383,7 +386,7 @@ rule tenx_harmony_integration:
         metadata = config.get("metadata", None)
     threads: 8
     resources:
-        mem_mb = 32000,  # 32GB in MB
+        mem_mb = 48000,  # 32GB in MB
         cpus = 8,
         account = "sbsandme_lab"
     shell:
@@ -424,6 +427,36 @@ rule tenx_harmony_notebook:
         mkdir -p {OUTPUT_DIR}/scanpy
         echo {input.integration_results}
         {params.script} --no-integration --min-genes {params.min_genes} {params.output_prefix}
+        """
+
+
+# Rule: per-sample filtering timeline plot
+rule plot_filtering_timeline:
+    input:
+        matrix = f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix.h5"
+    output:
+        png = f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png"
+    params:
+        script = "scripts/plot_filtering_timeline.py",
+        batch_key = config.get("batch_key", "batch"),
+        min_genes = config.get("min_genes", 200),
+        min_cells = config.get("min_cells", 3)
+    threads: 1
+    resources:
+        mem_mb = 4000,
+        cpus = 1,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/qc
+        python {params.script} \
+            --input {input.matrix} \
+            --batch-key {params.batch_key} \
+            --batch-value {wildcards.sample} \
+            --min-genes {params.min_genes} \
+            --min-cells {params.min_cells} \
+            --out {output.png}
         """
 
 # Rule: loompy

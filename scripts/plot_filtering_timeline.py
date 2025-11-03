@@ -8,7 +8,7 @@ Stages shown:
  - after_filter_cells_and_genes: after sc.pp.filter_genes(min_cells=...) applied after filter_cells
 
 Usage:
-  python scripts/plot_filtering_by_batch.py --input path/to/adata.h5ad --batch-key batch --min-genes 200 --min-cells 3 --out plot.png
+  python scripts/plot_filtering_timeline.py --input path/to/adata.h5ad --batch-key batch --min-genes 200 --min-cells 3 --out plot.png
 
 The script saves a PNG (or other matplotlib-supported format) with a boxplot/violin showing n_genes per cell by batch for each stage.
 """
@@ -65,9 +65,11 @@ def main(argv=None):
     )
     p.add_argument("--input", "-i", required=True, help="Path to input AnnData (.h5ad)")
     p.add_argument("--batch-key", default="batch", help="Column in adata.obs to use as batch (default: 'batch')")
+    p.add_argument("--batch-value", default=None,
+                   help="If the batch column is missing, create it with this constant value for all cells (optional).")
     p.add_argument("--min-genes", type=int, default=200, help="min_genes for sc.pp.filter_cells (default: 200)")
     p.add_argument("--min-cells", type=int, default=3, help="min_cells for sc.pp.filter_genes (default: 3)")
-    p.add_argument("--out", "-o", default="filtering_by_batch.png", help="Output figure path (png/svg/pdf)")
+    p.add_argument("--out", "-o", default="results/filtering_timeline.png", help="Output figure path (png/svg/pdf)")
     # use violin plots by default; allow opting out with --no-violin
     p.add_argument("--no-violin", action="store_true", help="Use boxplot instead of violin (default: violin)")
     args = p.parse_args(argv)
@@ -76,16 +78,36 @@ def main(argv=None):
     if not input_path.exists():
         p.error(f"Input file not found: {input_path}")
 
-    # Read AnnData (scanpy.read handles .h5ad)
-    try:
-        adata = sc.read(input_path)
-    except Exception as e:
-        # fallback to anndata read
-        adata = ad.read_h5ad(input_path)
+    # Read AnnData. Support both AnnData (.h5ad) and 10x matrix HDF5 (.h5)
+    # If a matrix .h5 (CellRanger filtered_feature_bc_matrix.h5) is provided,
+    # use scanpy.read_10x_h5 which returns an AnnData. Otherwise try scanpy/anndata
+    if input_path.suffix == ".h5":
+        try:
+            adata = sc.read_10x_h5(str(input_path))
+        except Exception:
+            # fall back to generic reader(s)
+            try:
+                adata = sc.read(input_path)
+            except Exception:
+                adata = ad.read_h5ad(input_path)
+    else:
+        try:
+            adata = sc.read(input_path)
+        except Exception:
+            adata = ad.read_h5ad(input_path)
 
     # Ensure obs index is set
     if adata.obs_names is None or len(adata.obs_names) == 0:
         raise ValueError("AnnData contains no observations (cells)")
+
+    # If the requested batch key is missing and a batch value was provided, add it
+    if args.batch_key not in adata.obs:
+        if args.batch_value is not None:
+            # assign the provided batch value (string) to all cells
+            adata.obs[args.batch_key] = str(args.batch_value)
+        else:
+            # leave it missing; build_stage_df will use 'unknown'
+            pass
 
     # Stage 1: raw
     df_raw = build_stage_df(adata, args.batch_key, "raw")
@@ -146,8 +168,23 @@ def main(argv=None):
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
     axes[0].set_ylabel("n_genes (genes detected per cell)")
-    plt.tight_layout()
+    # Add text showing the filtering thresholds used
+    info_text = f"min_genes={args.min_genes}, min_cells={args.min_cells}"
+    # Put as a suptitle and make room for it
+    fig.suptitle(info_text, fontsize=10)
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
     out_path = Path(args.out)
+    # If a batch_value was provided, append it as a slug to the output filename
+    if args.batch_value is not None:
+        import re
+        slug = str(args.batch_value)
+        # replace any sequence of non-alphanum, non-._- characters with underscore
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", slug)
+        if out_path.suffix:
+            out_path = out_path.with_name(out_path.stem + "_" + slug + out_path.suffix)
+        else:
+            out_path = out_path.with_name(out_path.name + "_" + slug)
+
     plt.savefig(out_path, dpi=150)
     print(f"Saved figure to {out_path}")
 
