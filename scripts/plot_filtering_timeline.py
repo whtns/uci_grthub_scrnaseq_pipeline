@@ -51,10 +51,17 @@ def build_stage_df(adata: ad.AnnData, batch_key: str, stage_label: str) -> pd.Da
     s = n_genes_per_cell(adata)
     # get batch values; if missing, use "unknown"
     if batch_key in adata.obs:
-        batch = adata.obs.loc[s.index, batch_key].astype(str)
+        # Align to the cell index returned by n_genes_per_cell. Reindex first
+        # (to get the same index), then coerce to a non-categorical/object
+        # dtype before filling missing values with 'unknown'. Doing astype
+        # before fillna avoids errors when the column is categorical.
+        batch = adata.obs[batch_key].reindex(s.index)
+        batch = batch.astype(object).fillna('unknown').astype(str)
     else:
         batch = pd.Series(["unknown"] * len(s), index=s.index)
-    df = pd.DataFrame({"batch": batch.values, "n_genes": s.values})
+    # construct DataFrame using the aligned index to ensure both arrays have
+    # identical length and order
+    df = pd.DataFrame({"batch": batch.values, "n_genes": s.values}, index=s.index)
     df["stage"] = stage_label
     return df
 
@@ -63,38 +70,61 @@ def main(argv=None):
     p = argparse.ArgumentParser(
         description="Plot genes detected (n_genes) per cell by batch at filtering steps"
     )
-    p.add_argument("--input", "-i", required=True, help="Path to input AnnData (.h5ad)")
+    p.add_argument("--input", "-i", required=True, nargs='+', help="One or more paths to input AnnData (.h5ad) or 10x h5 files")
     p.add_argument("--batch-key", default="batch", help="Column in adata.obs to use as batch (default: 'batch')")
     p.add_argument("--batch-value", default=None,
                    help="If the batch column is missing, create it with this constant value for all cells (optional).")
     p.add_argument("--min-genes", type=int, default=200, help="min_genes for sc.pp.filter_cells (default: 200)")
     p.add_argument("--min-cells", type=int, default=3, help="min_cells for sc.pp.filter_genes (default: 3)")
-    p.add_argument("--out", "-o", default="results/filtering_timeline.png", help="Output figure path (png/svg/pdf)")
+    p.add_argument("--max-genes", type=int, default=3000, help="Maximum genes detected to retain a cell (default: 3000)")
+    p.add_argument("--max-pct-mito", type=float, default=5.0, help="Maximum percent mitochondrial counts to retain a cell (default: 5.0)")
+    p.add_argument("--out", "-o", default="output/qc/filtering_timeline.png", help="Output figure path (png/svg/pdf)")
     # use violin plots by default; allow opting out with --no-violin
     p.add_argument("--no-violin", action="store_true", help="Use boxplot instead of violin (default: violin)")
     args = p.parse_args(argv)
 
-    input_path = Path(args.input)
-    if not input_path.exists():
-        p.error(f"Input file not found: {input_path}")
+    input_paths = [Path(p) for p in args.input]
+    for pth in input_paths:
+        if not pth.exists():
+            p.error(f"Input file not found: {pth}")
 
-    # Read AnnData. Support both AnnData (.h5ad) and 10x matrix HDF5 (.h5)
-    # If a matrix .h5 (CellRanger filtered_feature_bc_matrix.h5) is provided,
-    # use scanpy.read_10x_h5 which returns an AnnData. Otherwise try scanpy/anndata
-    if input_path.suffix == ".h5":
-        try:
-            adata = sc.read_10x_h5(str(input_path))
-        except Exception:
-            # fall back to generic reader(s)
+    def _read_one(path: Path) -> ad.AnnData:
+        # Read AnnData. Support both AnnData (.h5ad) and 10x matrix HDF5 (.h5)
+        # If a matrix .h5 (CellRanger filtered_feature_bc_matrix.h5) is provided,
+        # use scanpy.read_10x_h5 which returns an AnnData. Otherwise try scanpy/anndata
+        if path.suffix == ".h5":
             try:
-                adata = sc.read(input_path)
+                return sc.read_10x_h5(str(path))
             except Exception:
-                adata = ad.read_h5ad(input_path)
+                try:
+                    return sc.read(path)
+                except Exception:
+                    return ad.read_h5ad(path)
+        else:
+            try:
+                return sc.read(path)
+            except Exception:
+                return ad.read_h5ad(path)
+
+    adatas = [_read_one(p) for p in input_paths]
+
+    for adata in adatas:
+        adata.var_names_make_unique()
+
+    if len(adatas) == 1:
+        adata = adatas[0]
     else:
-        try:
-            adata = sc.read(input_path)
-        except Exception:
-            adata = ad.read_h5ad(input_path)
+        # Concatenate multiple AnnData objects into one, creating the batch
+        # observation column named by args.batch_key. Use the input filenames
+        # (stem) as keys for the batch labels. If the user provided
+        # --batch-value, ignore it in multi-input mode (the per-file sample
+        # names are usually what the user wants); warn the user.
+        keys = [p.parent.parent.stem for p in input_paths]
+        if args.batch_value is not None:
+            print(f"Warning: --batch-value ignored when concatenating multiple inputs; using file-based sample keys: {keys}")
+        # anndata.concat (aliased as ad.concat) will add a column named
+        # according to `label` with the provided keys
+        adata = ad.concat(adatas, join='outer', label=args.batch_key, keys=keys)
 
     # Ensure obs index is set
     if adata.obs_names is None or len(adata.obs_names) == 0:
@@ -109,23 +139,47 @@ def main(argv=None):
             # leave it missing; build_stage_df will use 'unknown'
             pass
 
+    # Compute mitochondrial percent and n_genes per cell
+    var_names = adata.var_names.astype(str)
+
+    adata.var['mt'] = adata.var_names.str.startswith('MT-')
+    sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+
     # Stage 1: raw
     df_raw = build_stage_df(adata, args.batch_key, "raw")
 
-    # Stage 2: after filter_cells
-    ad_fc = adata.copy()
-    sc.pp.filter_cells(ad_fc, min_genes=args.min_genes)
-    df_fc = build_stage_df(ad_fc, args.batch_key, "after_filter_cells")
+    # Stage 2: apply QC filters requested by the user: retain cells with
+    # fewer than `--max-genes` genes and mitochondrial percent less than
+    # `--max-pct-mito`.
+    s_raw = n_genes_per_cell(adata)
+    if 'pct_counts_mt' not in adata.obs:
+        # Ensure the column exists to avoid KeyError; default to 0
+        adata.obs['pct_counts_mt'] = 0.0
 
-    # Stage 3: after filter_cells + filter_genes
-    ad_fcg = ad_fc.copy()
+    # Align pct_counts_mt to the same index/order as s_raw to avoid boolean
+    # operation dimension/index mismatch. Fill missing values conservatively
+    # with 0.0 (no mitochondrial reads) and ensure numeric dtype.
+    pct_mt = adata.obs.get('pct_counts_mt')
+    if pct_mt is None:
+        pct_mt = pd.Series(0.0, index=adata.obs_names)
+    else:
+        pct_mt = pct_mt.reindex(s_raw.index).fillna(0.0).astype(float)
+
+    mask_keep = (s_raw.reindex(pct_mt.index).fillna(0) < args.max_genes) & (pct_mt < float(args.max_pct_mito))
+    # Subset AnnData with a boolean mask: use adata[mask] (AnnData does not
+    # implement .loc like pandas.DataFrame)
+    ad_qc = adata[mask_keep.values].copy()
+    df_qc = build_stage_df(ad_qc, args.batch_key, "after_qc_filters")
+
+    # Stage 3: after filter_genes applied to the filtered cells
+    ad_fcg = ad_qc.copy()
     sc.pp.filter_genes(ad_fcg, min_cells=args.min_cells)
     df_fcg = build_stage_df(ad_fcg, args.batch_key, "after_filter_cells_and_genes")
 
-    df_all = pd.concat([df_raw, df_fc, df_fcg], axis=0)
+    df_all = pd.concat([df_raw, df_qc, df_fcg], axis=0)
 
     # Order stages for plotting
-    stage_order = ["raw", "after_filter_cells", "after_filter_cells_and_genes"]
+    stage_order = ["raw", "after_qc_filters", "after_filter_cells_and_genes"]
     df_all["stage"] = pd.Categorical(df_all["stage"], categories=stage_order, ordered=True)
 
     # Prepare the plot: we want genes detected (y) and batch on x, with separate facet/hue per stage.
@@ -169,22 +223,14 @@ def main(argv=None):
 
     axes[0].set_ylabel("n_genes (genes detected per cell)")
     # Add text showing the filtering thresholds used
-    info_text = f"min_genes={args.min_genes}, min_cells={args.min_cells}"
+    info_text = (
+        f"min_genes={args.min_genes}, min_cells={args.min_cells}, "
+        f"max_genes={args.max_genes}, max_pct_mito={args.max_pct_mito}"
+    )
     # Put as a suptitle and make room for it
     fig.suptitle(info_text, fontsize=10)
     plt.tight_layout(rect=(0, 0, 1, 0.95))
     out_path = Path(args.out)
-    # If a batch_value was provided, append it as a slug to the output filename
-    if args.batch_value is not None:
-        import re
-        slug = str(args.batch_value)
-        # replace any sequence of non-alphanum, non-._- characters with underscore
-        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", slug)
-        if out_path.suffix:
-            out_path = out_path.with_name(out_path.stem + "_" + slug + out_path.suffix)
-        else:
-            out_path = out_path.with_name(out_path.name + "_" + slug)
-
     plt.savefig(out_path, dpi=150)
     print(f"Saved figure to {out_path}")
 

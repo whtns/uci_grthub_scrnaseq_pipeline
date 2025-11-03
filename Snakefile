@@ -76,22 +76,13 @@ print(f"Number of samples to process: {len(SAMPLES)}")
 # Rule all - defines final outputs for all samples
 rule all:
     input:
-        # # FastQC reports
-        # expand(f"fastqc/{{sample}}_r1_fastqc.html", sample=SAMPLES),
-        # expand(f"fastqc/{{sample}}_r2_fastqc.html", sample=SAMPLES),
-        # CellRanger outputs
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/web_summary.html", sample=SAMPLES),
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
         f"{OUTPUT_DIR}/multi_sample_summary.csv",
-        # Collected web summaries directory
-        # directory(f"{OUTPUT_DIR}/web_summaries"),
-        # MultiQC report
-        # f"{OUTPUT_DIR}/multiqc_report.html",
-        integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
-        integration_notebook = f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb"
-    ,
-    # per-sample filtering timeline plots
-    expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
+        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
+        f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
+        # per-sample filtering timeline plots
+        expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -441,10 +432,10 @@ rule plot_filtering_timeline:
         batch_key = config.get("batch_key", "batch"),
         min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 3)
-    threads: 1
+    threads: 4
     resources:
-        mem_mb = 4000,
-        cpus = 1,
+        mem_mb = 24000,  # 24GB in MB
+        cpus = 4,
         partition = "standard",
         account = "sbsandme_lab"
     shell:
