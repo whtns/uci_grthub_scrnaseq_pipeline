@@ -367,8 +367,7 @@ rule tenx_scvi_integration:
 # Rule: 10x harmony integration
 rule tenx_harmony_integration:
     input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
-       metadata = config.get("metadata", None)
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
     output:
         combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
@@ -380,7 +379,8 @@ rule tenx_harmony_integration:
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
-        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
+        output_prefix = f"{OUTPUT_DIR}/scanpy/combined",
+        metadata = config.get("metadata", None)
     threads: 8
     resources:
         mem_mb = 32000,  # 32GB in MB
@@ -395,8 +395,8 @@ rule tenx_harmony_integration:
             --min_genes {params.min_genes} \
             --min_cells {params.min_cells} \
             --n_top_genes {params.n_top_genes} \
-            --batch_key {params.batch_key}
-            --metadata {input.metadata if input.metadata else ''}
+            --batch_key {params.batch_key} \
+            --metadata {params.metadata}
         """
 
 # Rule: 10x harmony notebook
