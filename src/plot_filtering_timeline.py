@@ -81,6 +81,8 @@ def main(argv=None):
     p.add_argument("--out", "-o", default="output/qc/filtering_timeline.png", help="Output figure path (png/svg/pdf)")
     # use violin plots by default; allow opting out with --no-violin
     p.add_argument("--no-violin", action="store_true", help="Use boxplot instead of violin (default: violin)")
+    p.add_argument("--plot-doublets", action="store_true", help="Also produce a doublet-summary plot (requires doublet data in adata.obs or --doublet-csv)")
+    p.add_argument("--doublet-csv", nargs='*', default=None, help="One or more Scrublet CSV files (barcode,doublet_score,predicted_doublet) to merge into adata.obs before plotting")
     args = p.parse_args(argv)
 
     input_paths = [Path(p) for p in args.input]
@@ -233,6 +235,127 @@ def main(argv=None):
     out_path = Path(args.out)
     plt.savefig(out_path, dpi=150)
     print(f"Saved figure to {out_path}")
+
+    # Optionally plot doublet summaries
+    if args.plot_doublets:
+        try:
+            out_doublet = out_path.with_name(out_path.stem + "_doublets" + out_path.suffix)
+        except Exception:
+            out_doublet = Path(str(out_path) + "_doublets.png")
+        plot_doublets(adata, args.batch_key, doublet_csvs=args.doublet_csv, out_path=out_doublet)
+
+
+def plot_doublets(adata: ad.AnnData, batch_key: str, doublet_csvs: list | None = None, out_path: Path | str | None = None):
+    """Plot doublet score distributions per batch and percent predicted doublets per batch.
+
+    The function looks for columns `doublet_score` and `predicted_doublet` in `adata.obs`.
+    If `doublet_csvs` is provided, it will attempt to read one or more Scrublet CSV files
+    (with columns `barcode`, `doublet_score`, `predicted_doublet`) and merge by barcode.
+    """
+    # Prepare a DataFrame with batch, doublet_score, predicted_doublet
+    obs = adata.obs.copy()
+
+    # If CSVs provided, read and merge into obs (by barcode)
+    if doublet_csvs:
+        csvs = []
+        for p in doublet_csvs:
+            try:
+                df = pd.read_csv(p)
+            except Exception:
+                # try Path conversion
+                df = pd.read_csv(str(p))
+            # ensure expected columns
+            if 'barcode' not in df.columns:
+                continue
+            # keep only relevant columns
+            keep_cols = [c for c in ['barcode', 'doublet_score', 'predicted_doublet'] if c in df.columns]
+            df = df[keep_cols].drop_duplicates(subset=['barcode'])
+            csvs.append(df.set_index('barcode'))
+        if len(csvs) > 0:
+            df_csv = pd.concat(csvs, axis=0)
+            # join to obs by index (barcode). Many AnnData objects store barcodes as obs_names
+            # If obs index contains full barcode strings, merge directly; otherwise try to match prefix/suffix.
+            try:
+                merged = obs.join(df_csv, how='left')
+            except Exception:
+                # fallback: align by barcode column if exists
+                if 'barcode' in obs.columns:
+                    merged = obs.set_index('barcode', drop=False).join(df_csv, how='left')
+                else:
+                    merged = obs.join(df_csv, how='left')
+            obs = merged
+
+    # Check columns exist
+    if 'doublet_score' not in obs.columns and 'predicted_doublet' not in obs.columns:
+        print('No doublet information found in AnnData.obs or provided CSVs. Skipping doublet plot.')
+        return
+
+    # Ensure batch column exists
+    if batch_key not in obs.columns:
+        obs[batch_key] = 'unknown'
+
+    # Normalize predicted_doublet to boolean if present
+    if 'predicted_doublet' in obs.columns:
+        try:
+            pred = obs['predicted_doublet'].astype(bool)
+        except Exception:
+            pred = obs['predicted_doublet'].fillna(False).astype(bool)
+        obs['predicted_doublet'] = pred
+
+    # Build DataFrame for plotting
+    plot_df = pd.DataFrame({
+        'batch': obs[batch_key].astype(str),
+    }, index=obs.index)
+
+    if 'doublet_score' in obs.columns:
+        plot_df['doublet_score'] = pd.to_numeric(obs['doublet_score'], errors='coerce')
+    if 'predicted_doublet' in obs.columns:
+        plot_df['predicted_doublet'] = obs['predicted_doublet'].astype(bool)
+
+    # Drop rows with no data at all
+    if 'doublet_score' in plot_df.columns:
+        plot_df = plot_df.dropna(subset=['doublet_score'], how='all')
+
+    if len(plot_df) == 0:
+        print('No doublet-score rows available after merging/cleanup. Skipping doublet plot.')
+        return
+
+    sns.set(style='whitegrid')
+    # Create two panels: left = score distribution per batch; right = percent predicted doublet per batch
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    ax0 = axes[0]
+    if 'doublet_score' in plot_df.columns:
+        sns.violinplot(x='batch', y='doublet_score', data=plot_df, inner='quartile', ax=ax0)
+        ax0.set_ylabel('doublet_score')
+    else:
+        ax0.text(0.5, 0.5, 'No doublet_score available', ha='center', va='center')
+        ax0.set_ylabel('doublet_score')
+    ax0.set_xlabel(batch_key)
+    ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha='right')
+
+    ax1 = axes[1]
+    if 'predicted_doublet' in plot_df.columns:
+        pct = plot_df.groupby('batch')['predicted_doublet'].mean().reset_index()
+        pct['percent'] = pct['predicted_doublet'] * 100.0
+        sns.barplot(x='batch', y='percent', data=pct, ax=ax1)
+        ax1.set_ylabel('% predicted doublets')
+        for i, row in pct.iterrows():
+            ax1.text(i, row['percent'] + 1.0, f"{row['percent']:.1f}%", ha='center')
+    else:
+        ax1.text(0.5, 0.5, 'No predicted_doublet available', ha='center', va='center')
+        ax1.set_ylabel('% predicted doublets')
+    ax1.set_xlabel(batch_key)
+    ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout()
+    if out_path is not None:
+        outp = Path(out_path)
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(outp, dpi=150)
+        print(f"Saved doublet plot to {outp}")
+    else:
+        plt.show()
 
 
 if __name__ == "__main__":
