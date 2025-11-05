@@ -82,7 +82,8 @@ rule all:
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
         # f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
         # per-sample filtering timeline plots
-        expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
+        expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES),
+        f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -361,13 +362,13 @@ rule tenx_scvi_integration:
 # Rule: tenx harmony integration with Seurat
 rule tenx_harmony_integration_r:
     input:
-        tenx_comb_dir = f"{OUTPUT_DIR}/tenx_comb"
+        tenx_comb_dir = f"{OUTPUT_DIR}/cellranger"
     output:
         seurat_obj = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_integrated.rds",
         embeddings = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_embeddings.csv",
         plots = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
     params:
-        script = "scripts/tenx_harmony_integration.R",
+        script = "src/tenx_harmony_integration.R",
         min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),

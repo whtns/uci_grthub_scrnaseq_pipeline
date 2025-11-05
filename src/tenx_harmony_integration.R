@@ -27,8 +27,16 @@ parser$add_argument("--harmony_theta", type = "double", default = 2, help = "Har
 parser$add_argument("--harmony_dims", type = "integer", default = 30, help = "Number of Harmony dimensions")
 parser$add_argument("--cluster_resolution", type = "double", default = 0.5, help = "Clustering resolution")
 parser$add_argument("--globals_max_size", type = "integer", default = 24e3, help = "Clustering resolution")
+parser$add_argument("--max_genes", type = "integer", default = 8000, help = "Maximum genes per cell (filter)")
+parser$add_argument("--max_percent_mt", type = "double", default = 5, help = "Maximum mitochondrial percentage per cell (filter)")
+parser$add_argument("--groupvar", type = "character", default = "type", help = "Column name in metadata to use for grouping (group.by)")
+parser$add_argument("--group1", type = "character", default = "Medino_rooster_3NP5", help = "Value in groupvar for ident.1")
+parser$add_argument("--group2", type = "character", default = "TC_med_4_7P5", help = "Value in groupvar for ident.2")
 
 args <- parser$parse_args()
+groupvar <- args$groupvar
+group1 <- args$group1
+group2 <- args$group2
 
 # Check required arguments
 if (is.null(args$input_dir)) {
@@ -43,13 +51,13 @@ library(future)
 plan("multicore", workers = args$ncores)
 options(future.globals.maxSize = args$globals_max_size * 1024^2)  # 24GB
 
-cat("Starting Parse Harmony integration...\n")
+cat("Starting TenX/CellRanger Harmony integration...\n")
 cat("Input directory:", args$input_dir, "\n")
 cat("Output directory:", args$output_dir, "\n")
 cat("Using", args$ncores, "cores\n")
 
 # Function to read 10x / CellRanger output
-read_tenx_data <- function(data_dir) {
+read_tenx_data <- function(data_dir, min_cells = 5, min_genes = 200) {
   cat("Reading 10x/CellRanger data from:", data_dir, "\n")
 
   # Expect a sample folder that contains an `outs/` directory
@@ -71,14 +79,7 @@ read_tenx_data <- function(data_dir) {
     cat("Found matrix folder:", ff_dir, "\n")
     counts <- Read10X(ff_dir)
   } else {
-    # Try a fallback: sometimes matrix files live directly in outs/
-    mtx_file <- file.path(outs_dir, "filtered_feature_bc_matrix.mtx")
-    if (file.exists(mtx_file)) {
-      cat("Found matrix mtx in outs:\", mtx_file, "\n")
-      counts <- Read10X(outs_dir)
-    } else {
       stop("No filtered_feature_bc_matrix folder or HDF5 found in: ", outs_dir)
-    }
   }
 
   # Read10X may return a list (e.g., when multiple assays are present)
@@ -89,8 +90,8 @@ read_tenx_data <- function(data_dir) {
   # Create Seurat object
   seurat_obj <- CreateSeuratObject(
     counts = counts,
-    min.cells = args$min_cells,
-    min.features = args$min_genes,
+    min.cells = min_cells,
+    min.features = min_genes,
     project = basename(data_dir)
   )
 
@@ -121,7 +122,7 @@ for (i in seq_along(sample_dirs)) {
   sample_name <- basename(sample_dirs[i])
   cat("Processing sample:", sample_name, "\n")
 
-  seurat_obj <- read_tenx_data(sample_dirs[i])
+  seurat_obj <- read_tenx_data(sample_dirs[i], min_genes =  args$min_genes, min_cells = args$min_cells)
   seurat_obj[[]][[args$batch_key]] <- sample_name
   seurat_list[[sample_name]] <- seurat_obj
 }
@@ -139,6 +140,13 @@ cat("Combined object dimensions:", dim(combined_seurat), "\n")
 
 # Add mitochondrial gene percentage
 combined_seurat[["percent.mt"]] <- PercentageFeatureSet(combined_seurat, pattern = "^MT-")
+
+# Filter cells by maximum genes and mitochondrial percent
+cat("Filtering cells by nFeature_RNA <=", args$max_genes, "and percent.mt <", args$max_percent_mt, "%\n")
+before_cells <- ncol(combined_seurat)
+combined_seurat <- subset(combined_seurat, subset = nFeature_RNA <= args$max_genes & percent.mt < args$max_percent_mt)
+after_cells <- ncol(combined_seurat)
+cat("Filtered cells: kept", after_cells, "of", before_cells, "cells\n")
 
 # Normalize and find variable features
 cat("Normalizing data...\n")
@@ -179,6 +187,27 @@ combined_seurat <- FindNeighbors(combined_seurat,
                                 reduction = "harmony", 
                                 dims = 1:args$harmony_dims)
 combined_seurat <- FindClusters(combined_seurat, resolution = args$cluster_resolution)
+
+combined_seurat <- JoinLayers(combined_seurat)
+
+Idents(combined_seurat) <- combined_seurat$seurat_clusters
+
+combined_seurat@misc$markers <- FindAllMarkers(combined_seurat, 
+                                 only.pos = TRUE, 
+                                 min.pct = 0.25, 
+                                 logfc.threshold = 0.25)
+
+clusters <- unique(Idents(combined_seurat))
+combined_seurat@misc$diffex <- lapply(clusters, function(cl) {
+  sub <- subset(combined_seurat, idents = cl)
+  FindMarkers(sub,
+              ident.1 = group1,
+              ident.2 = group2,
+              group.by = groupvar,
+              min.pct = 0.25,
+              logfc.threshold = 0.25)
+})
+names(combined_seurat@misc$diffex) <- clusters
 
 # Save integrated Seurat object
 output_file <- file.path(args$output_dir, paste0(args$output_prefix, "_harmony_integrated.rds"))
