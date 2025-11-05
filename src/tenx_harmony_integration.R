@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(dplyr)
   library(Matrix)
+  library(writexl)
   library(argparse)
 })
 
@@ -197,6 +198,11 @@ combined_seurat@misc$markers <- FindAllMarkers(combined_seurat,
                                  min.pct = 0.25, 
                                  logfc.threshold = 0.25)
 
+combined_seurat@misc$markers |>
+tibble::rownames_to_column("rowname") |>
+write_csv(,
+          file = file.path(args$output_dir, paste0(args$output_prefix, "_harmony_cluster_markers.csv")))
+
 clusters <- unique(Idents(combined_seurat))
 combined_seurat@misc$diffex <- lapply(clusters, function(cl) {
   sub <- subset(combined_seurat, idents = cl)
@@ -208,6 +214,40 @@ combined_seurat@misc$diffex <- lapply(clusters, function(cl) {
               logfc.threshold = 0.25)
 })
 names(combined_seurat@misc$diffex) <- clusters
+
+# Export per-cluster differential expression results to an Excel workbook
+# Each sheet will be named <cluster>_<group1>_v_<group2> (sanitized to valid Excel sheet names)
+if (!dir.exists(args$output_dir)) dir.create(args$output_dir, recursive = TRUE)
+sanitize_sheet <- function(name) {
+  # replace invalid characters and trim to 31 chars (Excel limit)
+  s <- gsub("[\\\\/:*?\\[\\]]", "_", name)
+  substr(s, 1, 31)
+}
+sheets <- list()
+for (cl in names(combined_seurat@misc$diffex)) {
+  df <- combined_seurat@misc$diffex[[cl]]
+  sheet_name <- paste0(cl, "_", group1, "_v_", group2)
+  sheet_name <- sanitize_sheet(sheet_name)
+  # ensure unique sheet names if sanitization produced duplicates
+  orig_name <- sheet_name
+  suffix <- 1
+  while (sheet_name %in% names(sheets)) {
+    sheet_name <- substr(paste0(orig_name, "_", suffix), 1, 31)
+    suffix <- suffix + 1
+  }
+  # ensure rownames become a column if present
+  if (!is.null(rownames(df))) {
+    df_out <- cbind(gene = rownames(df), df)
+  } else {
+    df_out <- df
+  }
+  sheets[[sheet_name]] <- df_out
+}
+xlsx_file <- file.path(args$output_dir, paste0(args$output_prefix, "_diffex_", group1, "_v_", group2, ".xlsx"))
+write_xlsx(sheets, path = xlsx_file)
+cat("Wrote differential expression workbook to:", xlsx_file, "\n")
+
+
 
 # Save integrated Seurat object
 output_file <- file.path(args$output_dir, paste0(args$output_prefix, "_harmony_integrated.rds"))
@@ -236,6 +276,10 @@ pdf(plots_file, width = 12, height = 8)
 p1 <- DimPlot(combined_seurat, reduction = "umap", group.by = args$batch_key) +
   ggtitle("UMAP colored by batch")
 print(p1)
+
+p6 <- DimPlot(combined_seurat, reduction = "umap", group.by = "seurat_clusters", split.by = groupvar) +
+  ggtitle(paste("UMAP colored by cluster", "split by", groupvar))
+print(p6)
 
 # UMAP by clusters
 p2 <- DimPlot(combined_seurat, reduction = "umap", group.by = "seurat_clusters") +
