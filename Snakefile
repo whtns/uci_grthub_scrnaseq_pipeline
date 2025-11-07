@@ -84,7 +84,8 @@ rule all:
         f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
         f"{OUTPUT_DIR}/web_summaries",
         # per-sample filtering timeline plots
-        expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
+        expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES),
+        f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -361,8 +362,53 @@ rule tenx_harmony_integration:
             --batch_key {params.batch_key}
         """
 
-# Rule: 10x scVI integration
-rule tenx_scvi_integration:
+# Rule: tenx harmony integration with Seurat
+rule tenx_harmony_integration_r:
+    input:
+        tenx_comb_dir = f"{OUTPUT_DIR}/cellranger"
+    output:
+        seurat_obj = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_integrated.rds",
+        embeddings = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_embeddings.csv",
+        plots = f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
+    params:
+        script = "src/tenx_harmony_integration.R",
+        min_genes = config.get("min_genes", 200),
+        min_cells = config.get("min_cells", 5),
+        n_top_genes = config.get("n_top_genes", 2000),
+        batch_key = config.get("batch_key", "batch"),
+        output_prefix = "tenx_comb",
+        harmony_theta = config.get("harmony_theta", 2),
+        harmony_dims = config.get("harmony_dims", 30),
+        cluster_resolution = config.get("cluster_resolution", 0.5),
+        futures_max_size = config.get("futures_max_size", 24000)
+    threads: 8
+    resources:
+        mem_mb = 48000,  # 48GB in MB
+        cpus = 8,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        module load R/4.4.2
+        mkdir -p {OUTPUT_DIR}/seurat
+        Rscript {params.script} \
+            --input_dir "{input.tenx_comb_dir}" \
+            --output_prefix "{params.output_prefix}" \
+            --min_genes {params.min_genes} \
+            --min_cells {params.min_cells} \
+            --n_top_genes {params.n_top_genes} \
+            --batch_key "{params.batch_key}" \
+            --output_dir "{OUTPUT_DIR}/seurat" \
+            --ncores {threads} \
+            --harmony_theta {params.harmony_theta} \
+            --harmony_dims {params.harmony_dims} \
+            --cluster_resolution {params.cluster_resolution} \
+            --globals_max_size {params.futures_max_size}
+        module unload R/4.4.2
+        """
+
+# Rule: 10x harmony integration
+rule tenx_harmony_integration:
     input:
        filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
     output:
@@ -372,7 +418,7 @@ rule tenx_scvi_integration:
     params:
         script = "src/tenx_scvi_integration.py",
         input_dir = f"{OUTPUT_DIR}/cellranger",
-        min_genes = config.get("min_genes", 300),
+        min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
