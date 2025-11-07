@@ -92,13 +92,28 @@ else:
     
     combined_adata = ad.concat(adatas, join='outer', uns_merge="first")
 
-    metadata_df = pd.read_csv(args.metadata, index_col=0)
-
-    adata.obs = pd.merge(adata.obs, metadata_df, on="batch", how="left", validate="many_to_one")
+    # If a metadata CSV was provided and exists, join it onto the combined adata.obs.
+    # We use .join(...) to preserve the cell-level index and join by the batch key
+    # (matching batch values in adata.obs to the metadata dataframe's index).
+    metadata_path = args.metadata
+    if metadata_path and os.path.exists(metadata_path):
+        try:
+            metadata_df = pd.read_csv(metadata_path, index_col=0)
+            combined_adata.obs = combined_adata.obs.join(
+                metadata_df,
+                on=args.batch_key,
+                how='left',
+                rsuffix='_meta'
+            )
+            print(f"Merged metadata from {metadata_path} into combined_adata.obs")
+        except Exception as e:
+            print(f"Warning: failed to read/merge metadata from {metadata_path}: {e}")
+    else:
+        print(f"No metadata file found at {metadata_path}; skipping metadata merge.")
 
     combined_adata.write(combined_adata_path)
     del adatas
 
 print(output_prefix)
-
+combined_adata = gt.preprocess_adata(combined_adata, n_top_genes=args.n_top_genes, batch = True)
 gt.integrate_w_harmony(combined_adata, output_prefix)

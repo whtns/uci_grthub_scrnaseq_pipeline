@@ -80,7 +80,9 @@ rule all:
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
         f"{OUTPUT_DIR}/multi_sample_summary.csv",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
+        f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad",
         f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
+        f"{OUTPUT_DIR}/web_summaries",
         # per-sample filtering timeline plots
         expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES)
         # loompy outputs
@@ -324,40 +326,6 @@ rule collect_web_summaries:
         # Touch a file to mark completion (optional; directory() is sufficient)
         open(os.path.join(params.outdir, ".done"), 'w').close()
 
-# Rule: 10x scVI integration
-rule tenx_scvi_integration:
-    input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
-    output:
-        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
-        integration_results = f"{OUTPUT_DIR}/scanpy/combined_integrated.h5ad"
-    conda: "scvi-tools"
-    params:
-        script = "src/tenx_scvi_integration.py",
-        input_dir = f"{OUTPUT_DIR}/cellranger",
-        min_genes = config.get("min_genes", 300),
-        min_cells = config.get("min_cells", 5),
-        n_top_genes = config.get("n_top_genes", 2000),
-        batch_key = config.get("batch_key", "batch"),
-        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
-    threads: 4
-    resources:
-        mem_mb = 48000,  # 32GB in MB
-        cpus = 8,
-        partition = "gpu",
-        account = "sbsandme_lab_gpu"
-    shell:
-        """
-        mkdir -p {OUTPUT_DIR}/scanpy
-        python {params.script} \
-            --filtered_matrix_dirs {input.filtered_matrix_dirs} \
-            --output_prefix {params.output_prefix} \
-            --min_genes {params.min_genes} \
-            --min_cells {params.min_cells} \
-            --n_top_genes {params.n_top_genes} \
-            --batch_key {params.batch_key}
-        """
-
 # Rule: 10x harmony integration
 rule tenx_harmony_integration:
     input:
@@ -374,11 +342,12 @@ rule tenx_harmony_integration:
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
         output_prefix = f"{OUTPUT_DIR}/scanpy/combined",
-        metadata = config.get("metadata", None)
-    threads: 8
+        # metadata = config.get("metadata", None)
+    threads: 3
     resources:
-        mem_mb = 48000,  # 32GB in MB
-        cpus = 8,
+        mem_mb = 300000,  # 300GB in MB
+        partition = "hugemem",
+        cpus = 20,
         account = "sbsandme_lab"
     shell:
         """
@@ -389,8 +358,41 @@ rule tenx_harmony_integration:
             --min_genes {params.min_genes} \
             --min_cells {params.min_cells} \
             --n_top_genes {params.n_top_genes} \
-            --batch_key {params.batch_key} \
-            --metadata {params.metadata}
+            --batch_key {params.batch_key}
+        """
+
+# Rule: 10x scVI integration
+rule tenx_scvi_integration:
+    input:
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+    output:
+        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
+        integration_results = f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad"
+    conda: "scvi-tools"
+    params:
+        script = "src/tenx_scvi_integration.py",
+        input_dir = f"{OUTPUT_DIR}/cellranger",
+        min_genes = config.get("min_genes", 300),
+        min_cells = config.get("min_cells", 5),
+        n_top_genes = config.get("n_top_genes", 2000),
+        batch_key = config.get("batch_key", "batch"),
+        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
+    threads: 32
+    resources:
+        mem_mb = 288000,  # 192GB in MB
+        cpus = 32,
+        partition = "gpu",
+        account = "sbsandme_lab_gpu"
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/scanpy
+        python {params.script} \
+            --filtered_matrix_dirs {input.filtered_matrix_dirs} \
+            --output_prefix {params.output_prefix} \
+            --min_genes {params.min_genes} \
+            --min_cells {params.min_cells} \
+            --n_top_genes {params.n_top_genes} \
+            --batch_key {params.batch_key}
         """
 
 # Rule: 10x harmony notebook
