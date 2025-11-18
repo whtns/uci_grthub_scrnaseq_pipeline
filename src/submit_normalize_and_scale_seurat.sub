@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=snakemake_smallRNA
+#SBATCH -A SBSANDME_LAB
+#SBATCH -p hugemem
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=15
+#SBATCH --mem-per-cpu=18G
+#SBATCH --time=08:00:00
+#SBATCH --error=logs/normalize_master.%j.err
+#SBATCH --output=logs/normalize_master.%j.out
+
+module load R/4.3.3
+
+./src/normalize_and_scale_seurat.R ./output/Seurat5Shiny/seurat5.rds

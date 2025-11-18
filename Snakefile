@@ -15,6 +15,10 @@ import glob
 import os
 import re
 
+# Project directory name (parent directory containing this Snakefile). Used to
+# name outputs that should reflect the repository/workspace folder name.
+PROJECT_DIR_NAME = os.path.basename(os.path.abspath(os.path.dirname(__file__)))
+
 # Load configuration
 configfile: "config.yaml"
 
@@ -85,7 +89,8 @@ rule all:
         f"{OUTPUT_DIR}/web_summaries",
         # per-sample filtering timeline plots
         expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES),
-        f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
+        f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}"
+        # f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
         # scenic outputs
@@ -327,6 +332,40 @@ rule collect_web_summaries:
         # Touch a file to mark completion (optional; directory() is sufficient)
         open(os.path.join(params.outdir, ".done"), 'w').close()
 
+# Rule: 10x scvi integration
+rule tenx_scvi_integration:
+    input:
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+    output:
+        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
+        integration_results = f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad"
+    conda: "scvi-tools"
+    params:
+        script = "src/tenx_scvi_integration.py",
+        input_dir = f"{OUTPUT_DIR}/cellranger",
+        min_genes = config.get("min_genes", 200),
+        min_cells = config.get("min_cells", 5),
+        n_top_genes = config.get("n_top_genes", 2000),
+        batch_key = config.get("batch_key", "batch"),
+        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
+    threads: 32
+    resources:
+        mem_mb = 288000,  # 192GB in MB
+        cpus = 32,
+        partition = "gpu",
+        account = "sbsandme_lab_gpu"
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/scanpy
+        python {params.script} \
+            --filtered_matrix_dirs {input.filtered_matrix_dirs} \
+            --output_prefix {params.output_prefix} \
+            --min_genes {params.min_genes} \
+            --min_cells {params.min_cells} \
+            --n_top_genes {params.n_top_genes} \
+            --batch_key {params.batch_key}
+        """
+
 # Rule: 10x harmony integration
 rule tenx_harmony_integration:
     input:
@@ -407,40 +446,6 @@ rule tenx_harmony_integration_r:
         module unload R/4.4.2
         """
 
-# Rule: 10x harmony integration
-rule tenx_harmony_integration:
-    input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
-    output:
-        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
-        integration_results = f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad"
-    conda: "scvi-tools"
-    params:
-        script = "src/tenx_scvi_integration.py",
-        input_dir = f"{OUTPUT_DIR}/cellranger",
-        min_genes = config.get("min_genes", 200),
-        min_cells = config.get("min_cells", 5),
-        n_top_genes = config.get("n_top_genes", 2000),
-        batch_key = config.get("batch_key", "batch"),
-        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
-    threads: 32
-    resources:
-        mem_mb = 288000,  # 192GB in MB
-        cpus = 32,
-        partition = "gpu",
-        account = "sbsandme_lab_gpu"
-    shell:
-        """
-        mkdir -p {OUTPUT_DIR}/scanpy
-        python {params.script} \
-            --filtered_matrix_dirs {input.filtered_matrix_dirs} \
-            --output_prefix {params.output_prefix} \
-            --min_genes {params.min_genes} \
-            --min_cells {params.min_cells} \
-            --n_top_genes {params.n_top_genes} \
-            --batch_key {params.batch_key}
-        """
-
 # Rule: 10x harmony notebook
 rule tenx_harmony_notebook:
     input:
@@ -467,6 +472,47 @@ rule tenx_harmony_notebook:
         echo {input.integration_results}
         {params.script} --no-integration --min-genes {params.min_genes} {params.output_prefix}
         """
+
+rule convert_harmony_integrated_h5ad_to_rds:
+    input:
+        h5ad = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+    output:
+        rds = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds"
+    params:
+        script = "src/convert_h5ad_to_rds.R"
+    threads: 2
+    shell:
+        '''
+        module load R/4.3.3
+        Rscript {params.script} --input_h5ad {input.h5ad} --output_rds {output.rds}
+        module unload R/4.3.3
+        '''
+
+rule build_seurat5shiny:
+    input:
+        rds = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds",
+        integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+    output:
+        scale_data_dir = directory(f"{OUTPUT_DIR}/scaled_data"),
+        shiny_dir = directory(f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}")
+    params:
+        python_script = "src/pull_scaled_data.py",
+        r_script = "src/append_scaledata.R",
+        output_prefix = f"{OUTPUT_DIR}/scanpy/scaled_data"
+    threads: 16
+    resource:
+        mem_mb = 96000,  # 96GB in MB
+        cpus = 16,
+        partition = "standard",
+    shell:
+        '''
+        {params.python_script} {input.integration_results}
+        {params.r_script} {params.output_prefix} 
+        cp -r /dfs9/ucightf-lab/kstachel/Seurat5Shiny {output.shiny_dir}
+        echo {PROJECT_DIR_NAME} > {output.shiny_dir}/title.txt
+        cp rds {input.rds} {output.shiny_dir}/seurat5.rds
+        date > {output.shiny_dir}/restart.txt
+        ''' 
 
 
 # Rule: per-sample filtering timeline plot
