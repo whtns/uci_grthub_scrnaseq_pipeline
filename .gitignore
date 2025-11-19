@@ -22,3 +22,5 @@ results/
 *.png
 GreiS/
 src/*.pdf
+Snakefile.local
+*.pdf

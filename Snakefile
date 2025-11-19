@@ -332,10 +332,15 @@ rule collect_web_summaries:
         # Touch a file to mark completion (optional; directory() is sufficient)
         open(os.path.join(params.outdir, ".done"), 'w').close()
 
+# Samples to exclude from aggregated expand(...) lists
+EXCLUDED_SAMPLES = ["01011TC_101524", "01012LY_102924"]
+# Compute filtered samples from the main `SAMPLES` list
+FILTERED_SAMPLES = [s for s in SAMPLES if s not in EXCLUDED_SAMPLES]
+
 # Rule: 10x scvi integration
 rule tenx_scvi_integration:
     input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=FILTERED_SAMPLES)
     output:
         combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad"
@@ -369,7 +374,7 @@ rule tenx_scvi_integration:
 # Rule: 10x harmony integration
 rule tenx_harmony_integration:
     input:
-       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES)
+       filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=FILTERED_SAMPLES)
     output:
         combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
@@ -377,7 +382,7 @@ rule tenx_harmony_integration:
     params:
         script = "src/tenx_harmony_integration.py",
         input_dir = f"{OUTPUT_DIR}/cellranger",
-        min_genes = config.get("min_genes", 300),
+        min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
@@ -456,7 +461,7 @@ rule tenx_harmony_notebook:
     params:
         script = "src/submit_harmony_integration.sh",
         input_dir = f"{OUTPUT_DIR}/cellranger",
-        min_genes = config.get("min_genes", 300),
+        min_genes = config.get("min_genes", 200),
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
@@ -500,7 +505,7 @@ rule build_seurat5shiny:
         r_script = "src/append_scaledata.R",
         output_prefix = f"{OUTPUT_DIR}/scanpy/scaled_data"
     threads: 16
-    resource:
+    resources:
         mem_mb = 96000,  # 96GB in MB
         cpus = 16,
         partition = "standard",
@@ -683,3 +688,12 @@ rule scrublet:
         mkdir -p {OUTPUT_DIR}/scrublet
         python {params.script} --input {input.matrix} --output {output.doublets}
         """
+
+
+# # Optional local overrides: if `Snakefile.local` exists it will be included
+# # here so that rules defined in it (with the same names) will override the
+# # definitions from this main Snakefile. Place only the rules you want to
+# # change in `Snakefile.local`.
+# if os.path.exists("Snakefile.local"):
+#     print("Including Snakefile.local overrides (will override existing rules)")
+#     include: "Snakefile.local"
