@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 library(Seurat)
 library(reticulate)
 library(sceasy)
@@ -17,8 +18,8 @@ print_usage <- function() {
 
 if (length(args) == 0) {
 	# No args provided: use existing defaults
-	input_file <- "output/scanpy/bp_harmony_integrated.h5ad"
-	output_file <- "output/scanpy/bp_harmony_integrated.rds"
+	input_file <- "output/scanpy/combined_harmony_integrated.h5ad"
+	output_file <- "output/scanpy/combined_harmony_integrated.rds"
 } else {
 	# parse args
 	input_file <- NULL
