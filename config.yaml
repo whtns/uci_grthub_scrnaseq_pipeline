@@ -50,3 +50,6 @@ feather_db: "/dfs9/ucightf-lab/kstachel/kstachel_references/scenic/hg38_refseq-1
 # Main directory: /dfs8/commondata/cellranger/
 # Human: refdata-cellranger-GRCh38-3.0.0 
 # Mouse: refdata-cellranger-mm10-1.2.0
+
+notebooks:
+  harmony_integration_notebook: "src/inspect_integrated_anndata.ipynb"

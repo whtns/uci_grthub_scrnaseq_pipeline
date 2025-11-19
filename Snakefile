@@ -15,12 +15,14 @@ import glob
 import os
 import re
 
+configfile: "config.yaml"
+_local_config = "config.local.yaml"
+if os.path.exists(_local_config):
+    configfile: _local_config
+
 # Project directory name (parent directory containing this Snakefile). Used to
 # name outputs that should reflect the repository/workspace folder name.
 PROJECT_DIR_NAME = os.path.basename(os.path.abspath(os.path.dirname(__file__)))
-
-# Load configuration
-configfile: "config.yaml"
 
 # Auto-detect samples from FASTQ directory
 def get_samples_from_fastq_dir():
@@ -465,7 +467,8 @@ rule tenx_harmony_notebook:
         min_cells = config.get("min_cells", 5),
         n_top_genes = config.get("n_top_genes", 2000),
         batch_key = config.get("batch_key", "batch"),
-        output_prefix = f"{OUTPUT_DIR}/scanpy/combined"
+        output_prefix = f"{OUTPUT_DIR}/scanpy/combined",
+        notebook = config["notebooks"]["harmony_integration_notebook"]
     threads: 4
     resources:
         mem_mb = 32000,  # 32GB in MB
@@ -475,7 +478,7 @@ rule tenx_harmony_notebook:
         """
         mkdir -p {OUTPUT_DIR}/scanpy
         echo {input.integration_results}
-        {params.script} --no-integration --min-genes {params.min_genes} {params.output_prefix}
+        {params.script} --no-integration --min-genes {params.min_genes} --notebook {params.notebook} {params.output_prefix}
         """
 
 rule convert_harmony_integrated_h5ad_to_rds:
@@ -615,34 +618,6 @@ rule scvelo:
     threads: 2
     shell:
         '''python src/compute_velocity.py {input.anndata_file} {input.loom_file} {input.seurat_embeddings}'''
-
-# Rule: pileup and phasing
-rule pileup_and_phasing:
-    input:
-        bam = f"{OUTPUT_DIR}/{{sample}}/outs/possorted_genome_bam.bam",
-        barcodes = f"{OUTPUT_DIR}/{{sample}}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-        script = "src/pileup_and_phase.R"
-    output:
-        allele_df = f"{OUTPUT_DIR}/numbat/{{sample}}_allele_counts.tsv.gz"
-    threads: 4
-    shell:
-        '''Rscript {input.script} --label {wildcards.sample} --samples {wildcards.sample} --bams {input.bam} --barcodes {input.barcodes} --gmap config["gmap"] --snpvcf config["snpvcf"] --paneldir config["paneldir"] --outdir {OUTPUT_DIR}/numbat/{wildcards.sample} --ncores {threads}'''
-
-# Rule: Numbat
-rule numbat:
-    input:
-        allele_df = f"{OUTPUT_DIR}/numbat/{{sample}}_allele_counts.tsv.gz",
-        matrix_file = f"{OUTPUT_DIR}/{{sample}}/outs/filtered_feature_bc_matrix/matrix.mtx.gz",
-        seu_path = f"{OUTPUT_DIR}/seurat/{{sample}}_seu.rds",
-        script = "src/run_numbat.R"
-    output:
-        done_file = f"{OUTPUT_DIR}/numbat/{{sample}}/done.txt"
-    threads: 4
-    shell:
-        '''Rscript {input.script} seu_path="{input.seu_path}" ref_path=config["ref_path"] tau=config["tau"] read_prop=config["read_prop"] max_iter=config["max_iter"] min_LLR=config["min_LLR"] t=config["numbat_t"] cell_ceiling=config["cell_ceiling"] max_entropy=config["max_entropy"] allele_df="{input.allele_df}" matrix_file="{input.matrix_file}" out_dir="{OUTPUT_DIR}/numbat/{{wildcards.sample}}" ncores={threads} rprof_out={OUTPUT_DIR}/numbat/{{wildcards.sample}}/log.prof > {output.done_file} 2>&1'''
-
-# Rule: SCENIC analysis
-include: "rules/scenic.smk"
 
 # Rule: CellBender remove-background
 rule cellbender:

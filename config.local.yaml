@@ -1,0 +1,2 @@
+notebooks:
+  harmony_integration_notebook: "src/inspect_integrated_anndata.ipynb"

@@ -18,6 +18,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default parameters
 MIN_GENES=200
 RUN_INTEGRATION=true
+INSPECT_NOTEBOOK="src/inspect_integrated_anndata.ipynb"
 
 # Simple argument parsing: allow optional --min_genes N followed by one or more output_prefix arguments
 while [[ $# -gt 0 ]]; do
@@ -39,17 +40,23 @@ while [[ $# -gt 0 ]]; do
 			echo "Usage: $0 [--min_genes N] output_prefix [output_prefix ...]"
 			echo
 			echo "Runs src/harmony_integration.py for each provided output_prefix."
+			echo "Optional flags: --inspect-notebook PATH (default: src/inspect_integrated_anndata.ipynb)"
 			echo
 			echo "Example prefixes:" 
 			echo "  output/scanpy/output-XETG00221__0069979__Adult_cohort__20251003__181017/control"
-			echo "  output/scanpy/output-XETG00221__0069979__Adult_cohort__20251003__181017/heat_stress"
-			echo "  output/scanpy/output-XETG00221__0069982__Aged_cohort__20251003__181018/control"
-			echo "  output/scanpy/output-XETG00221__0069982__Aged_cohort__20251003__181018/heat_stress"
 			exit 0
 			;;
 		-* )
 			echo "Unknown option: $1" >&2
 			exit 2
+			;;
+		--inspect-notebook|--inspect_notebook|--notebook)
+			if [[ -z "${2:-}" ]]; then
+				echo "Error: value required for $1" >&2
+				exit 2
+			fi
+			INSPECT_NOTEBOOK="$2"
+			shift 2
 			;;
 		* )
 			break
@@ -82,7 +89,7 @@ for output_prefix in "$@"; do
 	
 	# Run papermill and nbconvert but don't let failures stop the entire job.
 	# Use explicit if/else so the script continues even if one of these steps fails.
-	if papermill "src/inspect_integrated_anndata.ipynb" \
+	if papermill "$INSPECT_NOTEBOOK" \
 		"$DIRNAME/inspect_integrated_anndata_${slug}.ipynb" \
 		-p combined_adata_path "$DIRNAME/${slug}_harmony_integrated.h5ad"; then
 		echo "Papermill succeeded for ${slug}"
