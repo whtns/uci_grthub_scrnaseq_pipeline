@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=6G
 #SBATCH --time=08:00:00
-#SBATCH --error=snakemake_master.%j.err
-#SBATCH --output=snakemake_master.%j.out
+#SBATCH --error=logs/harmony_integration.%j.err
+#SBATCH --output=logs/harmony_integration.%j.out
 
 set -euo pipefail
 
@@ -68,8 +68,8 @@ mamba activate scvi-tools
 
 # Loop over all provided prefixes and run the integration script once per prefix.
 for output_prefix in "$@"; do
-	echo "---- Running integration for: $output_prefix (min_genes=$MIN_GENES) ----"
 		if [[ "$RUN_INTEGRATION" == true ]]; then
+			echo "---- Running integration for: $output_prefix (min_genes=$MIN_GENES) ----"
 			python src/harmony_integration.py \
 				--output_prefix "$output_prefix" \
 				--min_genes "$MIN_GENES"
