@@ -478,7 +478,10 @@ rule tenx_harmony_notebook:
         """
         mkdir -p {OUTPUT_DIR}/scanpy
         echo {input.integration_results}
-        {params.script} --no-integration --min-genes {params.min_genes} --notebook {params.notebook} {params.output_prefix}
+        {params.script} --no-integration \
+        --min-genes {params.min_genes} \
+        --notebook {params.notebook} \
+        {params.output_prefix}
         """
 
 rule convert_harmony_integrated_h5ad_to_rds:
