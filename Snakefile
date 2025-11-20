@@ -86,7 +86,7 @@ rule all:
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
         f"{OUTPUT_DIR}/multi_sample_summary.csv",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
-        f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad",
+        # f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad",
         f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
         f"{OUTPUT_DIR}/web_summaries",
         # per-sample filtering timeline plots
@@ -521,7 +521,7 @@ rule build_seurat5shiny:
         {params.r_script} {params.output_prefix} 
         cp -r /dfs9/ucightf-lab/kstachel/Seurat5Shiny {output.shiny_dir}
         echo {PROJECT_DIR_NAME} > {output.shiny_dir}/title.txt
-        cp rds {input.rds} {output.shiny_dir}/seurat5.rds
+        cp {input.rds} {output.shiny_dir}/seurat5.rds
         date > {output.shiny_dir}/restart.txt
         ''' 
 

@@ -24,3 +24,4 @@ GreiS/
 src/*.pdf
 Snakefile.local
 *.pdf
+metadata/
