@@ -22,7 +22,7 @@ if os.path.exists(_local_config):
 
 # Project directory name (parent directory containing this Snakefile). Used to
 # name outputs that should reflect the repository/workspace folder name.
-PROJECT_DIR_NAME = os.path.basename(os.path.abspath(os.path.dirname(__file__)))
+PROJECT_DIR_NAME = os.path.basename(os.path.abspath(os.path.dirname(".")))
 
 # Auto-detect samples from FASTQ directory
 def get_samples_from_fastq_dir():
@@ -91,7 +91,10 @@ rule all:
         f"{OUTPUT_DIR}/web_summaries",
         # per-sample filtering timeline plots
         expand(f"{OUTPUT_DIR}/qc/filtering_timeline/{{sample}}.png", sample=SAMPLES),
-        f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}"
+        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds",
+        f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}",
+        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad",
+        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad"
         # f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
@@ -469,7 +472,7 @@ rule tenx_harmony_notebook:
         batch_key = config.get("batch_key", "batch"),
         output_prefix = f"{OUTPUT_DIR}/scanpy/combined",
         notebook = config["notebooks"]["harmony_integration_notebook"]
-    threads: 4
+    threads: 8
     resources:
         mem_mb = 32000,  # 32GB in MB
         cpus = 8,
@@ -484,46 +487,72 @@ rule tenx_harmony_notebook:
         {params.output_prefix}
         """
 
+rule save_raw_adata:
+    input:
+        combined_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+    output:
+        adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad",
+        scale_data_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad"
+    threads: 20
+    params:
+        script = "src/save_raw_adata.py"
+    resources:
+        mem_mb = 320000,  # 300GB in MB
+        partition = "hugemem",
+        cpus = 20,
+        account = "sbsandme_lab"
+    shell:
+        '''
+        {params.script} {input.combined_adata} {output.adata} {output.scale_data_adata}
+        '''
+
 rule convert_harmony_integrated_h5ad_to_rds:
     input:
-        h5ad = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+        adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad"
     output:
         rds = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds"
     params:
-        script = "src/convert_h5ad_to_rds.R"
-    threads: 2
+        script = "src/convert_h5ad_to_seurat.R",
+        output_prefix = f"scaled_data"
+    threads: 20
+    resources:
+        mem_mb = 320000,  # 300GB in MB
+        partition = "hugemem",
+        cpus = 20,
+        account = "sbsandme_lab"
     shell:
         '''
-        module load R/4.3.3
-        Rscript {params.script} --input_h5ad {input.h5ad} --output_rds {output.rds}
+        module load R/4.3.3 
+        Rscript {params.script} --data {input.adata} --output {output.rds}
         module unload R/4.3.3
         '''
 
 rule build_seurat5shiny:
     input:
         rds = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds",
-        integration_results = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+        scale_data_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad"
     output:
-        scale_data_dir = directory(f"{OUTPUT_DIR}/scaled_data"),
-        shiny_dir = directory(f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}")
+        shiny_dir = directory(f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}"),
+        rds = f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}/seurat5.rds"
     params:
-        python_script = "src/pull_scaled_data.py",
-        r_script = "src/append_scaledata.R",
-        output_prefix = f"{OUTPUT_DIR}/scanpy/scaled_data"
-    threads: 16
+        app_title = config.get("shiny_app", {}).get("title", PROJECT_DIR_NAME),
+        r_script = "src/seurat_scale_data.R",
+    threads: 20
     resources:
-        mem_mb = 96000,  # 96GB in MB
-        cpus = 16,
-        partition = "standard",
+        mem_mb = 320000,  # 300GB in MB
+        partition = "hugemem",
+        cpus = 20,
+        account = "sbsandme_lab"
     shell:
         '''
-        {params.python_script} {input.integration_results}
-        {params.r_script} {params.output_prefix} 
+        module load R/4.3.3 
+        mkdir -p {OUTPUT_DIR}/Seurat5Shiny
         cp -r /dfs9/ucightf-lab/kstachel/Seurat5Shiny {output.shiny_dir}
-        echo {PROJECT_DIR_NAME} > {output.shiny_dir}/title.txt
-        cp {input.rds} {output.shiny_dir}/seurat5.rds
+        echo {params.app_title} > {output.shiny_dir}/title.txt
         date > {output.shiny_dir}/restart.txt
-        ''' 
+        {params.r_script} {input.rds} {output.rds}  
+        module unload R/4.3.3 
+        '''
 
 
 # Rule: per-sample filtering timeline plot

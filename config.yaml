@@ -53,3 +53,6 @@ feather_db: "/dfs9/ucightf-lab/kstachel/kstachel_references/scenic/hg38_refseq-1
 
 notebooks:
   harmony_integration_notebook: "src/inspect_integrated_anndata.ipynb"
+
+shiny_app:
+  title: "Immunis scRNAseq 25 samples"

@@ -3,20 +3,26 @@ library(Seurat)
 library(Matrix)
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
-    stop("Usage: Rscript src/append_scaledata.R PATH_TO_SCALED_DATA_DIRECTORY")
+    stop("Usage: Rscript src/append_scaledata.R PATH_TO_SCALED_DATA_DIRECTORY [PREFIX] [SEURAT_RDS_INPUT] [SEURAT_RDS_OUTPUT]")
 }
 
 data_dir <- args[1]
+
+prefix <- if (length(args) >= 2 && nzchar(args[2])) args[2] else "scaled_data"
+# Optional third arg: path to Seurat RDS to modify (default preserved for backward compatibility)
+seurat_input <- if (length(args) >= 3 && nzchar(args[3])) args[3] else "output/Seurat5Shiny/seurat5.rds"
+seurat_output <- if (length(args) >= 4) args[4] else seurat_input
+
 if (!dir.exists(data_dir)) {
     stop(paste("Directory not found:", data_dir))
 }
 
-# Load the scaled data matrix
-scaled_data <- readMM(file.path(data_dir, "scaled_data.mtx"))
+# Load the scaled data matrix (use `prefix` to allow different file name stems)
+scaled_data <- readMM(file.path(data_dir, paste0(prefix, ".mtx")))
 
-# Load cell and gene names
-cell_barcodes <- read.csv(file.path(data_dir, "scaled_data_barcodes.csv"))$Barcode
-gene_names <- read.csv(file.path(data_dir, "scaled_data_genes.csv"))$GeneName
+# Load cell and gene names (filenames use the same prefix)
+cell_barcodes <- read.csv(file.path(data_dir, paste0(prefix, "_barcodes.csv")))$Barcode
+gene_names <- read.csv(file.path(data_dir, paste0(prefix, "_genes.csv")))$GeneName
 
 # Set row and column names for the matrix
 rownames(scaled_data) <- gene_names
@@ -28,7 +34,11 @@ colnames(scaled_data) <- cell_barcodes
 # For directly creating with scaled data, ensure you understand the implications for downstream analyses
 # that might expect raw counts or normalized data in the 'counts' or 'data' slot.
 
-seurat_obj <- readRDS("output/Seurat5Shiny/seurat5.rds")
+if (!file.exists(seurat_input)) {
+    stop(paste("Seurat RDS input not found:", seurat_input))
+}
+
+seurat_obj <- readRDS(seurat_input)
 
 # Determine target assay (use default assay if present)
 assay_name <- tryCatch(DefaultAssay(seurat_obj), error = function(e) NULL)
@@ -60,6 +70,5 @@ if (!inherits(res, "try-error")) {
 }
 
 # Save the modified Seurat object (overwrite original)
-seurat_path <- file.path("output/Seurat5Shiny/seurat5_mod.rds")
-saveRDS(seurat_obj, seurat_path)
-cat("Wrote updated Seurat object to:", seurat_path, "\n")
+saveRDS(seurat_obj, seurat_output)
+cat("Wrote updated Seurat object to:", seurat_output, "\n")
