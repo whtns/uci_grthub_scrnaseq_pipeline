@@ -85,6 +85,7 @@ rule all:
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/web_summary.html", sample=SAMPLES),
         expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=SAMPLES),
         f"{OUTPUT_DIR}/multi_sample_summary.csv",
+        f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad",
         # f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad",
         f"{OUTPUT_DIR}/scanpy/inspect_integrated_anndata_combined.ipynb",
@@ -347,7 +348,6 @@ rule tenx_scvi_integration:
     input:
        filtered_matrix_dirs = expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix", sample=FILTERED_SAMPLES)
     output:
-        combined_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
         integration_results = f"{OUTPUT_DIR}/scanpy/combined_scvi_integrated.h5ad"
     conda: "scvi-tools"
     params:
