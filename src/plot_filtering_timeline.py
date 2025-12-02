@@ -8,7 +8,7 @@ Stages shown:
  - after_filter_cells_and_genes: after sc.pp.filter_genes(min_cells=...) applied after filter_cells
 
 Usage:
-  python scripts/plot_filtering_timeline.py --input path/to/adata.h5ad --batch-key batch --min-genes 200 --min-cells 3 --out plot.png
+  python src/plot_filtering_timeline.py --input path/to/adata.h5ad --batch-key batch --min-genes 200 --min-cells 3 --out plot.png
 
 The script saves a PNG (or other matplotlib-supported format) with a boxplot/violin showing n_genes per cell by batch for each stage.
 """
@@ -76,7 +76,7 @@ def main(argv=None):
                    help="If the batch column is missing, create it with this constant value for all cells (optional).")
     p.add_argument("--min-genes", type=int, default=200, help="min_genes for sc.pp.filter_cells (default: 200)")
     p.add_argument("--min-cells", type=int, default=3, help="min_cells for sc.pp.filter_genes (default: 3)")
-    p.add_argument("--max-genes", type=int, default=3000, help="Maximum genes detected to retain a cell (default: 3000)")
+    p.add_argument("--max-genes", type=int, default=8000, help="Maximum genes detected to retain a cell (default: 8000)")
     p.add_argument("--max-pct-mito", type=float, default=5.0, help="Maximum percent mitochondrial counts to retain a cell (default: 5.0)")
     p.add_argument("--out", "-o", default="output/qc/filtering_timeline.png", help="Output figure path (png/svg/pdf)")
     # use violin plots by default; allow opting out with --no-violin
