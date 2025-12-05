@@ -2,6 +2,12 @@
 library(Seurat)
 library(reticulate)
 library(sceasy)
+if (!requireNamespace('rhdf5', quietly = TRUE)) {
+	message("Package 'rhdf5' not available; attempting conversion with main_layer default (will use .X)")
+} else {
+	# ensure library is loaded
+	library(rhdf5)
+}
 
 # Simple command-line argument parsing to accept --counts, --scaled_data and --output
 args <- commandArgs(trailingOnly = TRUE)
@@ -89,7 +95,27 @@ message("Converting: ", data_file, " -> ", output_file)
 
 # perform conversion
 message("Converting counts AnnData: ", data_file, " -> ", output_file)
-sceasy::convertFormat(data_file, from = "anndata", to = "seurat", outFile = output_file, main_layer = "data")
+
+# If the AnnData file contains a 'layers/data' matrix, use it; otherwise use .X
+main_layer <- NULL
+try({
+	h5_list <- rhdf5::h5ls(data_file)
+	# Looking for group '/layers' and dataset name 'data'
+	if (any(h5_list$group == '/layers' & h5_list$name == 'data')) {
+		main_layer <- 'data'
+		message("Found layers/data in H5AD file; using main_layer='data' for conversion")
+	} else {
+		main_layer <- 'X'
+		message("No 'layers/data' present in H5AD file; using main_layer='X' (AnnData .X)")
+	}
+}, silent = TRUE)
+
+if (is.null(main_layer)) {
+	# default to X if detection failed
+	main_layer <- 'X'
+}
+
+sceasy::convertFormat(data_file, from = "anndata", to = "seurat", outFile = output_file, main_layer = main_layer)
 
 if (!is.null(scaled_data_file) && nzchar(scaled_data_file) && file.exists(scaled_data_file)) {
 	message("Converting scaled AnnData (if provided): ", scaled_data_file)

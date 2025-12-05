@@ -40,9 +40,11 @@ def create_sequential_timepoint_table(batch_list: List[str]) -> pd.DataFrame:
     # 6. Select and return the final desired columns
     return df_sorted[['batch', 'patient', 'timepoint']]
 
-adata = sc.read("output/scanpy/copy_combined_harmony_integrated.h5ad")
+adata = sc.read("output/scanpy/combined_harmony_integrated.h5ad")
 
 meta = create_sequential_timepoint_table(adata.obs['batch'].unique().tolist())
+
+meta.to_csv("metadata/metadata.csv", index=True)
 
 adata.obs = pd.merge(adata.obs, meta, on="batch")
 

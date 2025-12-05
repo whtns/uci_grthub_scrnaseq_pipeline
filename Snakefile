@@ -95,7 +95,8 @@ rule all:
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds",
         f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad",
-        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad"
+        f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad",
+        f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
         # f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
         # expand(f"{OUTPUT_DIR}/loom/{{sample}}.loom", sample=SAMPLES),
@@ -489,7 +490,8 @@ rule tenx_harmony_notebook:
 
 rule save_raw_adata:
     input:
-        combined_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
+        raw_adata = f"{OUTPUT_DIR}/scanpy/combined.h5ad",
+        integrated_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.h5ad"
     output:
         adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad",
         scale_data_adata = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad"
@@ -497,14 +499,60 @@ rule save_raw_adata:
     params:
         script = "src/save_raw_adata.py"
     resources:
-        mem_mb = 320000,  # 300GB in MB
+        mem_mb = 512000,  # 300GB in MB
         partition = "hugemem",
-        cpus = 20,
+        cpus = 32,
         account = "sbsandme_lab"
     shell:
         '''
-        {params.script} {input.combined_adata} {output.adata} {output.scale_data_adata}
+        {params.script} {input.integrated_adata} {input.raw_adata} {output.adata} {output.scale_data_adata}
         '''
+
+# Rule: Prepare CellRanger aggr CSV
+rule prep_cellranger_aggr_csv:
+    input:
+        expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix.h5", sample=SAMPLES)
+    output:
+        f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
+    params:
+        script="src/prep_cellranger_aggr.sh",
+        agg_id = config.get("cellranger_aggr_id", "FilaE")
+    threads: 1
+    resources:
+        mem_mb = 6000,  # 192GB in MB
+        cpus = 1,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        module load cellranger/8.0.1
+        bash {params.script} -i {params.agg_id}
+        module unload cellranger/8.0.1
+        """
+
+
+# Rule: Run CellRanger aggr job
+rule run_cellranger_aggr:
+    input:
+        csv=f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
+    output:
+        f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
+    params:
+        sub_script="src/run_cellranger_aggr.sub",
+        agg_id = config.get("cellranger_aggr_id", "FilaE")
+    threads: 8
+    resources:
+        mem_mb = 48000,  # 192GB in MB
+        cpus = 8,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        module load cellranger/8.0.1
+        rm -rf {params.agg_id}
+        cellranger aggr --normalize none --id {params.agg_id} --csv {input.csv}
+        module unload cellranger/8.0.1
+        """
 
 rule convert_harmony_integrated_h5ad_to_rds:
     input:
@@ -514,11 +562,11 @@ rule convert_harmony_integrated_h5ad_to_rds:
     params:
         script = "src/convert_h5ad_to_seurat.R",
         output_prefix = f"scaled_data"
-    threads: 20
+    threads: 32
     resources:
-        mem_mb = 320000,  # 300GB in MB
+        mem_mb = 512000,  # 512GB in MB
         partition = "hugemem",
-        cpus = 20,
+        cpus = 32,
         account = "sbsandme_lab"
     shell:
         '''

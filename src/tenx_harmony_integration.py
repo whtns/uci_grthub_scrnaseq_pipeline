@@ -90,7 +90,7 @@ else:
         
         adatas.append(adata)
     
-    combined_adata = ad.concat(adatas, join='outer', uns_merge="first")
+    combined_adata = ad.concat(adatas, join='outer', uns_merge="first", fill_value=0)
 
     # If a metadata CSV was provided and exists, join it onto the combined adata.obs.
     # We use .join(...) to preserve the cell-level index and join by the batch key
