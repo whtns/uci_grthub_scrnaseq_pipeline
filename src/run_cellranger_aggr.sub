@@ -1,4 +1,5 @@
 #!/bin/bash
+# Usage: sbatch src/run_cellranger_aggr.sub <csv_path> <id>
 #SBATCH --job-name=snakemake_smallRNA
 #SBATCH -A SBSANDME_LAB
 #SBATCH -p standard
@@ -10,7 +11,8 @@
 #SBATCH --error=logs/snakemake_master.%j.err
 #SBATCH --output=logs/snakemake_master.%j.out
 
+
 module load cellranger/8.0.1
-rm -rf GreiS
-cellranger aggr --normalize none --id GreiS --csv output/cellranger_aggr_GreiS/aggr.csv
-module unload cellranger/8.0.1 
+rm -rf "$2"
+cellranger aggr --normalize none --id "$2" --csv "$1"
+module unload cellranger/8.0.1

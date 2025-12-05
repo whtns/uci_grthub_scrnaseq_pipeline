@@ -64,7 +64,7 @@ if [ -z "$ID" ]; then
 fi
 
 if [ -z "$OUTDIR" ]; then
-	OUTDIR="output/cellranger_aggr_${ID}"
+	OUTDIR="output/cellranger_aggr"
 fi
 mkdir -p "$OUTDIR"
 
@@ -162,7 +162,7 @@ if ! command -v "${CELLRANGER_BIN}" >/dev/null 2>&1; then
 fi
 
 echo "Running cellranger aggr (this may take a while)..."
-"${CMD[@]}"
+# "${CMD[@]}"
 
 echo "cellranger aggr finished. Output is under: ${ID} (or ${OUTDIR} depending on CellRanger behavior)"
 

@@ -313,6 +313,54 @@ rule multi_sample_summary:
         combined.to_csv(output.summary, index=False)
         print(f"Wrote combined metrics to {output.summary}")
 
+# Rule: Prepare CellRanger aggr CSV
+rule prep_cellranger_aggr_csv:
+    input:
+        expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix.h5", sample=SAMPLES)
+    output:
+        f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
+    params:
+        script="src/prep_cellranger_aggr.sh",
+        agg_id = config.get("cellranger_aggr_id", "output/cellranger_aggr/FilaE")
+    threads: 1
+    resources:
+        mem_mb = 6000,  # 192GB in MB
+        cpus = 1,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        module load cellranger/8.0.1
+        bash {params.script} -i {params.agg_id}
+        module unload cellranger/8.0.1
+        """
+
+
+# Rule: Run CellRanger aggr job
+rule run_cellranger_aggr:
+    input:
+        csv=f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
+    output:
+        f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
+    params:
+        sub_script="src/run_cellranger_aggr.sub",
+        agg_id = config.get("cellranger_aggr_id", "FilaE"),
+        run_dir = f"{OUTPUT_DIR}/cellranger_aggr"
+    threads: 8
+    resources:
+        mem_mb = 48000,  # 192GB in MB
+        cpus = 8,
+        partition = "standard",
+        account = "sbsandme_lab"
+    shell:
+        """
+        module load cellranger/8.0.1
+        cd {params.run_dir}
+        rm -rf {params.agg_id}
+        cellranger aggr --normalize none --id {params.agg_id} --csv $(basename {input.csv})
+        touch {output}
+        module unload cellranger/8.0.1
+        """
 
 # Rule: collect web_summary.html files into a single directory for easy viewing
 rule collect_web_summaries:
@@ -343,6 +391,7 @@ rule collect_web_summaries:
 EXCLUDED_SAMPLES = ["01011TC_101524", "01012LY_102924"]
 # Compute filtered samples from the main `SAMPLES` list
 FILTERED_SAMPLES = [s for s in SAMPLES if s not in EXCLUDED_SAMPLES]
+
 
 # Rule: 10x scvi integration
 rule tenx_scvi_integration:
