@@ -321,7 +321,7 @@ rule prep_cellranger_aggr_csv:
         f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
     params:
         script="src/prep_cellranger_aggr.sh",
-        agg_id = config.get("cellranger_aggr_id", "output/cellranger_aggr/FilaE")
+        agg_id = config.get("cellranger_aggr_id", "FilaE"),
     threads: 1
     resources:
         mem_mb = 6000,  # 192GB in MB
@@ -331,6 +331,7 @@ rule prep_cellranger_aggr_csv:
     shell:
         """
         module load cellranger/8.0.1
+        mkdir -p {OUTPUT_DIR}/cellranger_aggr
         bash {params.script} -i {params.agg_id}
         module unload cellranger/8.0.1
         """
@@ -556,52 +557,6 @@ rule save_raw_adata:
         '''
         {params.script} {input.integrated_adata} {input.raw_adata} {output.adata} {output.scale_data_adata}
         '''
-
-# Rule: Prepare CellRanger aggr CSV
-rule prep_cellranger_aggr_csv:
-    input:
-        expand(f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/filtered_feature_bc_matrix.h5", sample=SAMPLES)
-    output:
-        f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
-    params:
-        script="src/prep_cellranger_aggr.sh",
-        agg_id = config.get("cellranger_aggr_id", "FilaE")
-    threads: 1
-    resources:
-        mem_mb = 6000,  # 192GB in MB
-        cpus = 1,
-        partition = "standard",
-        account = "sbsandme_lab"
-    shell:
-        """
-        module load cellranger/8.0.1
-        bash {params.script} -i {params.agg_id}
-        module unload cellranger/8.0.1
-        """
-
-
-# Rule: Run CellRanger aggr job
-rule run_cellranger_aggr:
-    input:
-        csv=f"{OUTPUT_DIR}/cellranger_aggr/aggr.csv"
-    output:
-        f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
-    params:
-        sub_script="src/run_cellranger_aggr.sub",
-        agg_id = config.get("cellranger_aggr_id", "FilaE")
-    threads: 8
-    resources:
-        mem_mb = 48000,  # 192GB in MB
-        cpus = 8,
-        partition = "standard",
-        account = "sbsandme_lab"
-    shell:
-        """
-        module load cellranger/8.0.1
-        rm -rf {params.agg_id}
-        cellranger aggr --normalize none --id {params.agg_id} --csv {input.csv}
-        module unload cellranger/8.0.1
-        """
 
 rule convert_harmony_integrated_h5ad_to_rds:
     input:
