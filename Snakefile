@@ -74,10 +74,10 @@ TRANSCRIPTOME = config["references"]["transcriptome"]
 OUTPUT_DIR = config["paths"]["output"]
 
 # Print detected samples for debugging
-print(f"Auto-detected samples: {auto_samples}")
-print(f"Using samples: {SAMPLES}")
-print(f"FASTQ directory: {FASTQ_DIR}")
-print(f"Number of samples to process: {len(SAMPLES)}")
+print(f"Auto-detected samples: {auto_samples}", file=sys.stderr)
+print(f"Using samples: {SAMPLES}", file=sys.stderr)
+print(f"FASTQ directory: {FASTQ_DIR}", file=sys.stderr)
+print(f"Number of samples to process: {len(SAMPLES)}", file=sys.stderr)
 
 # Rule all - defines final outputs for all samples
 rule all:
@@ -322,9 +322,9 @@ rule prep_cellranger_aggr_csv:
     params:
         script="src/prep_cellranger_aggr.sh",
         agg_id = config.get("cellranger_aggr_id", "FilaE"),
-    threads: 1
+    threads: 32
     resources:
-        mem_mb = 6000,  # 192GB in MB
+        mem_mb = 6000,  # 512GB in MB
         cpus = 1,
         partition = "standard",
         account = "sbsandme_lab"
@@ -345,20 +345,26 @@ rule run_cellranger_aggr:
         f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
     params:
         sub_script="src/run_cellranger_aggr.sub",
-        agg_id = config.get("cellranger_aggr_id", "FilaE"),
+        agg_id = config.get("cellranger_aggr_id", "GreiS"),
         run_dir = f"{OUTPUT_DIR}/cellranger_aggr"
-    threads: 8
+    threads: 16
     resources:
-        mem_mb = 48000,  # 192GB in MB
-        cpus = 8,
-        partition = "standard",
+        mem_mb = 256000,  # 192GB in MB
+        cpus = 16,
+        partition = "hugemem",
         account = "sbsandme_lab"
     shell:
         """
         module load cellranger/8.0.1
         cd {params.run_dir}
         rm -rf {params.agg_id}
-        cellranger aggr --normalize none --id {params.agg_id} --csv $(basename {input.csv})
+        cellranger aggr \
+        --normalize none \
+        --nosecondary \
+        --id {params.agg_id} \
+        --csv $(basename {input.csv}) \
+        --localcores={threads} \
+        --localmem=240
         touch {output}
         module unload cellranger/8.0.1
         """
@@ -446,7 +452,7 @@ rule tenx_harmony_integration:
         # metadata = config.get("metadata", None)
     threads: 3
     resources:
-        mem_mb = 300000,  # 300GB in MB
+        mem_mb = 320000,  # 300GB in MB
         partition = "hugemem",
         cpus = 20,
         account = "sbsandme_lab"
