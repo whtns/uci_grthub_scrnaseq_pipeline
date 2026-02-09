@@ -20,6 +20,7 @@ results/
 src/technology_xenium.ipynb
 results/
 *.png
+!rulegraph.png
 GreiS/
 src/*.pdf
 Snakefile.local
