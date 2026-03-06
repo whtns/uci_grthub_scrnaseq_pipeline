@@ -27,3 +27,4 @@ Snakefile.local
 *.pdf
 metadata/
 *.csv
+.env

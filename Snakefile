@@ -459,7 +459,7 @@ rule tenx_harmony_integration:
     shell:
         """
         mkdir -p {OUTPUT_DIR}/scanpy
-        python {params.script} \
+        PYTHONNOUSERSITE=1 python {params.script} \
             --filtered_matrix_dirs {input.filtered_matrix_dirs} \
             --output_prefix {params.output_prefix} \
             --min_genes {params.min_genes} \

@@ -1,0 +1,14 @@
+chmod g+s ~/.conda/envs/bigsur_env
+cp -r ~/.conda/envs/bigsur_env /dfs9/ucightf-lab/kstachel/.conda/envs/bigsur_env
+
+chmod g+s ~/.conda/envs/bsseq
+mv ~/.conda/envs/bsseq /dfs9/ucightf-lab/kstachel/.conda/envs/bsseq
+
+chmod g+s ~/.conda/envs/refgenie
+mv ~/.conda/envs/refgenie /dfs9/ucightf-lab/kstachel/.conda/envs/refgenie
+
+chmod g+s ~/.conda/envs/samui
+mv ~/.conda/envs/samui /dfs9/ucightf-lab/kstachel/.conda/envs/samui
+
+chmod g+s ~/.conda/envs/scvi-tools
+mv ~/.conda/envs/scvi-tools /dfs9/ucightf-lab/kstachel/.conda/envs/scvi-tools
