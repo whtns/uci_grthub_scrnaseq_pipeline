@@ -21,6 +21,7 @@ Example:
     python run_add_ensembl_ids.py output/scanpy/combined_harmony_integrated.h5ad --use-cellarium
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,9 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+
+# Disable Arrow-backed strings (pandas 2.x+) for HDF5 compatibility with anndata
+pd.options.future.infer_string = False
 
 import grthub_tools as gt
 
@@ -151,8 +155,8 @@ def main():
     parser.add_argument(
         "--cellarium-token",
         type=str,
-        default="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNCwiZXhwaXJhdGlvbiI6IjIwMjYtMDMtMTEgMTk6NTc6MzQuMjU5MzU1In0.Gs6MRlp7wwvkznrZIyyWwK8MBU2UOJOQBmagXyG4Cvg",
-        help="Cellarium API token"
+        default=os.environ.get("CELLARIUM_API_KEY"),
+        help="Cellarium API token (defaults to CELLARIUM_API_KEY environment variable)"
     )
     parser.add_argument(
         "--cluster-key",
@@ -203,7 +207,16 @@ def main():
         if not CELLARIUM_AVAILABLE:
             print("ERROR: Cellarium is not available. Install with: pip install cellarium-cas")
             sys.exit(1)
-        
+
+        # SCT/Seurat objects often have X=None; restore from counts layer
+        if adata.X is None:
+            if "counts" in adata.layers:
+                print("adata.X is None — restoring from 'counts' layer for Cellarium...")
+                adata.X = adata.layers["counts"]
+            else:
+                print("ERROR: adata.X is None and no 'counts' layer found.", file=sys.stderr)
+                sys.exit(1)
+
         gt.annotate_with_cellarium(
             adata,
             api_token=args.cellarium_token,
@@ -278,7 +291,14 @@ def main():
         print(sample_df)
     
     # Save the modified AnnData
-    output_path = args.output if args.output else args.input_file
+    if args.output:
+        output_path = args.output
+    else:
+        input_suffix = input_path.suffix if input_path.suffix else ".h5ad"
+        if args.use_cellarium:
+            output_path = str(input_path.with_name(f"{input_path.stem}_cellarium{input_suffix}"))
+        else:
+            output_path = str(input_path.with_name(f"{input_path.stem}_ensembl_ids{input_suffix}"))
     print(f"\nSaving modified AnnData to: {output_path}")
     
     adata.write_h5ad(output_path)
