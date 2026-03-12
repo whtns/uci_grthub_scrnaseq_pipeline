@@ -1,32 +1,26 @@
 #!/usr/bin/env Rscript
-library(Seurat)
-library(reticulate)
-library(sceasy)
-if (!requireNamespace('rhdf5', quietly = TRUE)) {
-	message("Package 'rhdf5' not available; attempting conversion with main_layer default (will use .X)")
-} else {
-	# ensure library is loaded
-	library(rhdf5)
-}
+suppressPackageStartupMessages({
+	library(Seurat)
+	library(anndataR)
+})
 
-# Simple command-line argument parsing to accept --counts, --scaled_data and --output
 args <- commandArgs(trailingOnly = TRUE)
 
 print_usage <- function() {
 	cat("convert_h5ad_to_seurat.R - convert an AnnData (.h5ad) file to a Seurat .rds file\n")
 	cat("\nUsage:\n")
-	cat("  Rscript src/convert_h5ad_to_seurat.R --data <data.h5ad> [--scaled_data <scaled.h5ad>] [--output <file.rds>]\n\n")
+	cat("  Rscript src/convert_h5ad_to_seurat.R --data <data.h5ad> [--output <file.rds>] [--assay <assay>]\n\n")
 	cat("Options:\n")
 	cat("  --data  Path to input data .h5ad file (default: output/scanpy/combined_harmony_integrated.h5ad)\n")
-	cat("  --scaled_data  Path to scaled matrix (.mtx) with companion barcode/gene CSVs (optional)\n")
 	cat("  --output  Path to output .rds file (default: same as counts but with .rds extension)\n")
+	cat("  --assay  Assay name to use after conversion (default: keep converted default assay)\n")
 	invisible(NULL)
 }
 
 # defaults
 data_file <- NULL
-scaled_data_file <- NULL
 output_file <- NULL
+assay_name <- NULL
 
 if (length(args) == 0) {
 	# No args provided: use existing defaults
@@ -48,15 +42,6 @@ if (length(args) == 0) {
 			} else {
 				stop("--data requires a value")
 			}
-		} else if (startsWith(a, "--scaled_data=")) {
-			scaled_data_file <- sub("^--scaled_data=", "", a)
-		} else if (a == "--scaled_data") {
-			if ((i+1) <= length(args)) {
-				scaled_data_file <- args[i+1]
-				i <- i + 1
-			} else {
-				stop("--scaled_data requires a value")
-			}
 		} else if (startsWith(a, "--output=")) {
 			output_file <- sub("^--output=", "", a)
 		} else if (a == "--output") {
@@ -65,6 +50,15 @@ if (length(args) == 0) {
 				i <- i + 1
 			} else {
 				stop("--output requires a value")
+			}
+		} else if (startsWith(a, "--assay=")) {
+			assay_name <- sub("^--assay=", "", a)
+		} else if (a == "--assay") {
+			if ((i+1) <= length(args)) {
+				assay_name <- args[i+1]
+				i <- i + 1
+			} else {
+				stop("--assay requires a value")
 			}
 		} else {
 			stop(paste("Unknown argument:", a))
@@ -85,51 +79,29 @@ if (length(args) == 0) {
 	}
 }
 
-# Ensure conda env is used for reticulate (if needed in the environment)
-try({
-	use_condaenv("scvi-tools", conda = "/opt/apps/mamba/24.3.0/bin/mamba")
-}, silent = TRUE)
-
-
 message("Converting: ", data_file, " -> ", output_file)
 
-# perform conversion
-message("Converting counts AnnData: ", data_file, " -> ", output_file)
+if (!file.exists(data_file)) {
+	stop("Input AnnData file not found: ", data_file)
+}
 
-# If the AnnData file contains a 'layers/data' matrix, use it; otherwise use .X
-main_layer <- NULL
-try({
-	h5_list <- rhdf5::h5ls(data_file)
-	# Looking for group '/layers' and dataset name 'data'
-	if (any(h5_list$group == '/layers' & h5_list$name == 'data')) {
-		main_layer <- 'data'
-		message("Found layers/data in H5AD file; using main_layer='data' for conversion")
-	} else {
-		main_layer <- 'X'
-		message("No 'layers/data' present in H5AD file; using main_layer='X' (AnnData .X)")
+message("Reading AnnData with anndataR: ", data_file)
+seu <- anndataR::read_h5ad(data_file, as = "Seurat")
+
+if (!inherits(seu, "Seurat")) {
+	stop("Converted object is not a Seurat object")
+}
+
+if (!is.null(assay_name) && nzchar(assay_name)) {
+	if (!(assay_name %in% names(seu@assays))) {
+		stop("Requested assay not found in Seurat object: ", assay_name)
 	}
-}, silent = TRUE)
-
-if (is.null(main_layer)) {
-	# default to X if detection failed
-	main_layer <- 'X'
+	Seurat::DefaultAssay(seu) <- assay_name
 }
 
-sceasy::convertFormat(data_file, from = "anndata", to = "seurat", outFile = output_file, main_layer = main_layer)
-
-if (!is.null(scaled_data_file) && nzchar(scaled_data_file) && file.exists(scaled_data_file)) {
-	message("Converting scaled AnnData (if provided): ", scaled_data_file)
-	sceasy::convertFormat(scaled_data_file, from = "anndata", to = "seurat", outFile = file.path(dirname(output_file), paste0(tools::file_path_sans_ext(basename(output_file)), "_scaled_data.rds")), main_layer = "scale.data")
-} else {
-	message("No scaled_data provided or file not found; skipping scaled data conversion.")
+if ("batch" %in% colnames(seu[[]])) {
+	Idents(seu) <- "batch"
 }
-
-seu <- readRDS(output_file)
-Idents(seu) <- seu$batch
-
-# seu <- NormalizeData(seu)
-# seu <- FindVariableFeatures(seu, selection.method = "vst")
-# seu <- ScaleData(seu, features = VariableFeatures(seu), block.size = 200)
 
 saveRDS(seu, file = output_file)
 

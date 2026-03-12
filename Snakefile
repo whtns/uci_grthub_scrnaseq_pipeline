@@ -571,7 +571,7 @@ rule convert_harmony_integrated_h5ad_to_rds:
         rds = f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated.rds"
     params:
         script = "src/convert_h5ad_to_seurat.R",
-        output_prefix = f"scaled_data"
+        container = "/dfs9/ucightf-lab/kstachel/singularity_containers/r_seurat_anndataR.sif"
     threads: 32
     resources:
         mem_mb = 512000,  # 512GB in MB
@@ -580,9 +580,9 @@ rule convert_harmony_integrated_h5ad_to_rds:
         account = "sbsandme_lab"
     shell:
         '''
-        module load R/4.3.3 
-        Rscript {params.script} --data {input.adata} --output {output.rds}
-        module unload R/4.3.3
+        module load singularity
+        singularity exec {params.container} Rscript {params.script} --data {input.adata} --output {output.rds}
+        module unload singularity
         '''
 
 rule build_seurat5shiny:
