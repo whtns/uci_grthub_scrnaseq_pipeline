@@ -107,7 +107,18 @@ SEURAT_ASSAY="$ASSAY"
 ANNDATA_X_MAPPING="$X_MAPPING"
 export SEURAT_INPUT ANNDATA_OUTPUT SEURAT_ASSAY ANNDATA_X_MAPPING
 
-singularity exec "$CONTAINER" Rscript --vanilla - <<'EOF'
+# Build bind-mount arguments so both the input and output directories
+# are accessible inside the container regardless of site auto-bind config.
+INPUT_DIR="$(dirname "$SEURAT_INPUT")"
+OUTPUT_DIR="$(dirname "$ANNDATA_OUTPUT")"
+mkdir -p "$OUTPUT_DIR"
+
+BIND_ARGS="${INPUT_DIR}:${INPUT_DIR}"
+if [[ "$OUTPUT_DIR" != "$INPUT_DIR" ]]; then
+	BIND_ARGS="${BIND_ARGS},${OUTPUT_DIR}:${OUTPUT_DIR}"
+fi
+
+singularity exec --bind "$BIND_ARGS" "$CONTAINER" Rscript --vanilla - <<'EOF'
 suppressPackageStartupMessages({
 	library(Seurat)
 	library(anndataR)
