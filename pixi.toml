@@ -9,6 +9,7 @@ conda-pypi-map = { "conda-forge" = "file:///dfs9/ucightf-lab/kstachel/pixi_cache
 [tasks]
 
 [dependencies]
+python = ">=3.14.3,<3.15"
 
 [feature.scvi-tools]
 channels = ["conda-forge", "bioconda", "https://conda.anaconda.org/conda-forge", "https://conda.anaconda.org/conda-forge"]
@@ -148,3 +149,6 @@ yarl = "==1.20.1"
 
 [environments]
 scvi-tools = { features = ["scvi-tools"], no-default-feature = true }
+
+[pypi-dependencies]
+cellsweep = ">=0.1.2, <0.2"

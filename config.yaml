@@ -41,6 +41,20 @@ mt_thresh: 5
 n_top_genes: 2000
 batch_key: "batch"
 
+# CellSweep parameters (per-sample denoising on CellRanger raw matrices)
+cellsweep:
+  threads: 16
+  cpus: 16
+  mem_mb: 128000
+  prep_threads: 4
+  prep_cpus: 4
+  prep_mem_mb: 24000
+  partition: "standard"
+  account: "sbsandme_lab"
+  expected_cells: ""
+  umi_cutoff: ""
+  extra_args: ""
+
 ## Scenic
 TFs: "/dfs9/ucightf-lab/kstachel/kstachel_references/scenic/hs_hgnc_curated_tfs.txt"
 motifs: "/dfs9/ucightf-lab/kstachel/kstachel_references/scenic/motifs-v9-nr.hgnc.tbl"

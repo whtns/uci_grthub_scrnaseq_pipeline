@@ -96,6 +96,7 @@ rule all:
         f"{OUTPUT_DIR}/Seurat5Shiny/{PROJECT_DIR_NAME}",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_data.h5ad",
         f"{OUTPUT_DIR}/scanpy/combined_harmony_integrated_scale_data.h5ad",
+        expand(f"{OUTPUT_DIR}/scanpy/cellsweep/{{sample}}_raw_cellsweep.h5ad", sample=SAMPLES),
         f"{OUTPUT_DIR}/cellranger_aggr/outs/aggregation_complete.txt"
         # f"{OUTPUT_DIR}/seurat/tenx_comb_harmony_plots.pdf"
         # loompy outputs
@@ -563,6 +564,65 @@ rule save_raw_adata:
         '''
         {params.script} {input.integrated_adata} {input.raw_adata} {output.adata} {output.scale_data_adata}
         '''
+
+
+rule prepare_cellsweep_input:
+    input:
+        raw_h5 = f"{OUTPUT_DIR}/cellranger/{{sample}}/outs/raw_feature_bc_matrix.h5"
+    output:
+        adata_in = f"{OUTPUT_DIR}/scanpy/cellsweep/{{sample}}_raw_input.h5ad"
+    params:
+        script = "src/cellranger_raw_h5_to_h5ad.py"
+    threads: config.get("cellsweep", {}).get("prep_threads", 4)
+    resources:
+        mem_mb = config.get("cellsweep", {}).get("prep_mem_mb", 24000),
+        cpus = config.get("cellsweep", {}).get("prep_cpus", 4),
+        partition = config.get("cellsweep", {}).get("partition", "standard"),
+        account = config.get("cellsweep", {}).get("account", "sbsandme_lab")
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/scanpy/cellsweep
+        python {params.script} \
+            --input {input.raw_h5} \
+            --output {output.adata_in} \
+            --sample {wildcards.sample}
+        """
+
+
+rule cellsweep_denoise_count_matrix:
+    input:
+        adata = f"{OUTPUT_DIR}/scanpy/cellsweep/{{sample}}_raw_input.h5ad"
+    output:
+        adata_out = f"{OUTPUT_DIR}/scanpy/cellsweep/{{sample}}_raw_cellsweep.h5ad"
+    params:
+        expected_cells_arg = (
+            f"--expected_cells {config.get('cellsweep', {}).get('expected_cells')}"
+            if config.get("cellsweep", {}).get("expected_cells", "") != ""
+            else ""
+        ),
+        umi_cutoff_arg = (
+            f"--umi_cutoff {config.get('cellsweep', {}).get('umi_cutoff')}"
+            if config.get("cellsweep", {}).get("umi_cutoff", "") != ""
+            else ""
+        ),
+        extra_args = config.get("cellsweep", {}).get("extra_args", "")
+    threads: config.get("cellsweep", {}).get("threads", 16)
+    resources:
+        mem_mb = config.get("cellsweep", {}).get("mem_mb", 128000),
+        cpus = config.get("cellsweep", {}).get("cpus", 16),
+        partition = config.get("cellsweep", {}).get("partition", "standard"),
+        account = config.get("cellsweep", {}).get("account", "sbsandme_lab")
+    shell:
+        """
+        mkdir -p {OUTPUT_DIR}/scanpy/cellsweep
+        pixi run cellsweep denoise_count_matrix \
+            -t {threads} \
+            {params.expected_cells_arg} \
+            {params.umi_cutoff_arg} \
+            -o {output.adata_out} \
+            {params.extra_args} \
+            {input.adata}
+        """
 
 rule convert_harmony_integrated_h5ad_to_rds:
     input:
